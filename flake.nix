@@ -34,6 +34,7 @@
           export KIND_EXPERIMENTAL_DOCKER_NETWORK=$DEV_NETWORK
           # Unset to ensure it doesn't run podman, docker is a requirement here
           export KIND_EXPERIMENTAL_PROVIDER=""
+          export KUBECONFIG="$HOME/.kube/config.d/ansible-dev-env"
 
           if ! docker network inspect "$DEV_NETWORK" >/dev/null 2>&1; then
               echo "===> Creating docker network '$DEV_NETWORK' ($DEV_SUBNET)"
