@@ -1,0 +1,30 @@
+# AnsibleHost object represents a host reachable by ansible
+#
+# Upon reconcile, we should create a secret with the host's ssh key to trust it only on creation, unless spec.ssh.ignore_host_key is set to true
+# Set an owner ref to allow for garbage collection, and make it overwrite the ssh host key only when it's not present
+
+apiVersion: ansible-operator.lightjack.de
+kind: AnsibleHost
+metadata:
+  name: foobar
+  namespace: default
+spec:
+  ansible_name: foobar # default to metadata.name if not set
+  # TODO: Once no longer scope limited, add further vars here as per ansible docs
+  connection:
+    host: ssh-server-1.default.svc.cluster.local # required
+    port: 22 # default
+    user: root # default
+    # NOTE: No ansible_password parameter because that's a terrible idea.
+  ssh:
+    # connection parameters below reference a secret containing an ssh key and
+    # will set `ansible_ssh_private_key_file`
+    ignore_host_key: false # default
+    ssh_key_secret_ref: # required
+      name: foo # required
+  privilege:
+    become: false # default
+  # TODO: Once no longer scope limited, maybe parse this as a map.
+  # TODO: Beware of string injection attacks here...
+  host_vars: |
+    arbitrary string value that will be inserted into the host's vars block

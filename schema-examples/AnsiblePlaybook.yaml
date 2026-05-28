@@ -1,0 +1,76 @@
+# AnsiblePlaybook represents an ansible playbook
+# Playbook may be inlined or pulled from git
+#
+# --- Playbook Source ---
+# NOTE: spec.inline.playbook and spec.git are mutually exclusive, and at least one must be set.
+#
+# --- Authentication for sources ---
+# Git sources may use SSH key or username/password auth, and the credentials are expected to be in a secret in the same namespace as the playbook.
+# TODO: Figure out if we want to trust the host key of the git server dynamically or just inline it into this spec
+#
+# --- Execution / Aquiring sources ---
+# Inlined playbooks will be stored as a configmap and mounted to the pod run by the AnsibleReconcileJob.
+# Git playbooks will be cloned by an init container in the AnsibleReconcileJob Pod before the execution starts.
+#
+# --- Requirements for the playbook ---
+# There may be an additional requirements.yaml file in the same repo as the playbook or inlined into the spec.
+
+apiVersion: ansible-operator.lightjack.de
+kind: AnsiblePlaybook
+metadata:
+  name: inline-playbook
+  namespace: default
+spec:
+  # Direct inline playbook example
+  inline:
+    requirements: |
+      - name: ansible.builtin
+        version: 1.0.0
+    playbook: |
+      - name: Example Playbook
+        hosts: all
+        tasks:
+          - name: Ping
+            ansible.builtin.ping:
+---
+apiVersion: ansible-operator.lightjack.de
+kind: AnsiblePlaybook
+metadata:
+  name: http-git-playbook
+  namespace: default
+spec:
+  # Git playbook example
+  git:
+    # Source for the repo
+    repo:
+      url: https://example.com/repo.git
+      ref: main
+    # Path to the playbook within the repo
+    playbook_path: path/to/playbook.yaml
+    requirements_path: path/to/requirements.yaml
+    # Optional auth parameters for private repos
+    auth:
+      username_password:
+        credential_secret_ref:
+          name: git-credential-secret
+          username_key: username # default
+          password_key: password # default
+---
+apiVersion: ansible-operator.lightjack.de
+kind: AnsiblePlaybook
+metadata:
+  name: ssh-git-playbook
+  namespace: default
+spec:
+  # Git playbook example with ssh auth
+  git:
+    repo:
+      url: git@example.com:repo.git
+      ref: main
+    playbook_path: path/to/playbook.yaml
+    requirements_path: path/to/requirements.yaml
+    auth:
+      ssh_key:
+        credential_secret_ref:
+          name: git-ssh-credential-secret
+          ssh_key_key: ssh_privatekey # default

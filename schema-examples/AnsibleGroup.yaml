@@ -1,0 +1,17 @@
+# AnsibleGroup represents a group in ansible that may contain multiple hosts or subgroups.
+
+apiVersion: ansible-operator.lightjack.de
+kind: AnsibleGroup
+metadata:
+  name: foo
+  namespace: default
+spec:
+  ansible_name: foo # default to metadata.name if not set
+  hosts:
+    # List of AnsibleHost refs in the same namespace
+    - name: foobar
+  subgroups:
+    # List of AnsibleGroup refs in the same namespace
+    - name: bar
+  group_vars: |
+    arbitrary string value that will be inserted into the host's vars block

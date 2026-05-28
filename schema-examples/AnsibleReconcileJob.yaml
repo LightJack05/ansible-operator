@@ -1,0 +1,23 @@
+# The reconcile logic of this will do the heavy lifting
+# It will:
+#   - Build the inventory into a configmap based on the AnsibleHost and AnsibleGroup objects in the same namespace
+#   - Watch the corresponding resources to trigger a reconcile when they change
+#   - Create a cronjob that will run the specified playbook in a pod with several init containers to set up the environment:
+#     - 1. Clone the playbook and requirements.yaml file into a shared volume (skip if inline playbook)
+#     - 2. Install the requirements.yaml into the shared volume
+#   - The cronjob needs to mount all SSH keys, git credentials etc. including:
+#     - One key per host (this may be replicated but doesn't matter)
+#     - One key for the playbook repo
+#     - One key for the requirements.yaml TODO: figure out how to handle multiple ssh keys for one requirements.yaml
+#   - It also needs to match the ssh keys mounted to be used correctly by the correct hosts
+#   - The reconcile job will also build a configmap for the ssh config to match ssh keys mounted to the correct hosts, and mount it to the pod
+
+apiVersion: ansible-operator.lightjack.de
+kind: AnsibleReconcileJob
+metadata:
+  name: example-reconcile-job
+  namespace: default
+spec:
+  schedule: "0 0 * * *"
+  playbook_ref:
+    name: inline-playbook
