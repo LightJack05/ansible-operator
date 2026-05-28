@@ -8,7 +8,7 @@ services:
       ansible-operator:
         ipv4_address: 172.30.0.10
     volumes:
-      - ./repos:/srv/git
+      - ./testdata:/data:ro
       - ./ssh-keys/id_ed25519.pub:/tmp/authorized_keys.pub:ro
     restart: unless-stopped
 

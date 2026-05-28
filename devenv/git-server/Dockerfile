@@ -30,6 +30,7 @@ RUN htpasswd -bc /etc/nginx/git.htpasswd git gitpass
 
 COPY nginx.conf  /etc/nginx/sites-available/default
 COPY entrypoint.sh /entrypoint.sh
+COPY .gitconfig /root/.gitconfig
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 22 80

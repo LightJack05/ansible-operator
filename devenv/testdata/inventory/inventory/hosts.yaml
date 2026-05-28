@@ -1,0 +1,14 @@
+datacenter:
+  children:
+    host:
+      hosts:
+        MGMT:
+          ansible_host: git-server.default.svc.cluster.local
+    targets:
+      hosts:
+        MGMT-T1:
+          ansible_host: ssh-node-1.default.svc.cluster.local
+        MGMT-T2:
+          ansible_host: ssh-node-2.default.svc.cluster.local
+        MGMT-T3:
+          ansible_host: ssh-node-3.default.svc.cluster.local
