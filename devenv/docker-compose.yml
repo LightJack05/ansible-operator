@@ -1,0 +1,53 @@
+services:
+  git-server:
+    build: ./git-server
+    image: tmp/git-server:latest
+    container_name: git-server
+    hostname: git-server
+    networks:
+      ansible-operator:
+        ipv4_address: 172.30.0.10
+    volumes:
+      - ./repos:/srv/git
+      - ./ssh-keys/id_ed25519.pub:/tmp/authorized_keys.pub:ro
+    restart: unless-stopped
+
+  ssh-node-1:
+    build: ./ssh-node
+    image: tmp/ssh-node:latest
+    container_name: ssh-node-1
+    hostname: ssh-node-1
+    networks:
+      ansible-operator:
+        ipv4_address: 172.30.0.11
+    volumes:
+      - ./ssh-keys/id_ed25519.pub:/tmp/authorized_keys.pub:ro
+    restart: unless-stopped
+
+  ssh-node-2:
+    build: ./ssh-node
+    image: tmp/ssh-node:latest
+    container_name: ssh-node-2
+    hostname: ssh-node-2
+    networks:
+      ansible-operator:
+        ipv4_address: 172.30.0.12
+    volumes:
+      - ./ssh-keys/id_ed25519.pub:/tmp/authorized_keys.pub:ro
+    restart: unless-stopped
+
+  ssh-node-3:
+    build: ./ssh-node
+    image: tmp/ssh-node:latest
+    container_name: ssh-node-3
+    hostname: ssh-node-3
+    networks:
+      ansible-operator:
+        ipv4_address: 172.30.0.13
+    volumes:
+      - ./ssh-keys/id_ed25519.pub:/tmp/authorized_keys.pub:ro
+    restart: unless-stopped
+
+networks:
+  ansible-operator:
+    external: true

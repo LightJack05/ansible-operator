@@ -381,3 +381,14 @@ kind-deploy:
 kind-undeploy:
 	@echo "Undeploying from kind..."
 	$(MAKE) undeploy
+
+# Dev Env
+.PHONY: devenv-up devenv-down reset-devenv
+devenv-up:
+	$(MAKE) -C devenv/ up
+
+devenv-down:
+	$(MAKE) -C devenv/ down
+
+reset-devenv:
+	$(MAKE) -C devenv/ recreate
