@@ -2,12 +2,14 @@
 # This file is used to track the info used to scaffold your project
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
+cliVersion: 4.13.1
 domain: lightjack.de
 layout:
 - go.kubebuilder.io/v4
 plugins:
-  manifests.sdk.operatorframework.io/v2: {}
-  scorecard.sdk.operatorframework.io/v2: {}
+  helm.kubebuilder.io/v2-alpha:
+    manifests: dist/install.yaml
+    output: dist
 projectName: ansible-operator
 repo: github.com/LightJack05/ansible-operator
 version: "3"

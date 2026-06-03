@@ -1,9 +1,9 @@
 {
-  description = "Operator SDK project dev shell";
+  description = "Kubebuilder project dev shell";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    operatorSdkShell.url = "git+https://gitea.lightjack.de/LightJack05/nix-library?dir=shells/operator-sdk";
+    kubebuilderShell.url = "git+https://gitea.lightjack.de/LightJack05/nix-library?dir=shells/kubebuilder";
     generalLib.url = "git+https://gitea.lightjack.de/LightJack05/nix-library?dir=lib/general";
     podmanLib.url = "git+https://gitea.lightjack.de/LightJack05/nix-library?dir=lib/podman";
     kindLib.url = "git+https://gitea.lightjack.de/LightJack05/nix-library?dir=lib/kind";
@@ -11,7 +11,7 @@
     # qemuLib.url = "git+https://gitea.lightjack.de/LightJack05/nix-library?dir=lib/qemu";
   };
 
-  outputs = { self, nixpkgs, operatorSdkShell, generalLib, podmanLib, kindLib, ... }:
+  outputs = { self, nixpkgs, kubebuilderShell, generalLib, podmanLib, kindLib, ... }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
@@ -56,14 +56,14 @@
         in
         {
           default = pkgs.mkShell {
-            name = "operator-sdk-dev-shell";
-            packages = operatorSdkShell.shellConfig.${system}.packages
+            name = "kubebuilder-dev-shell";
+            packages = kubebuilderShell.shellConfig.${system}.packages
               ++ generalLib.packages.${system}
               ++ podmanLib.packages.${system}
               ++ kindLib.packages.${system}
               ++ optionalPackages
               ++ extraPackages;
-            shellHook = operatorSdkShell.shellConfig.${system}.shellHook
+            shellHook = kubebuilderShell.shellConfig.${system}.shellHook
               + generalLib.shellHook
               + podmanLib.shellHook
               + optionalHook

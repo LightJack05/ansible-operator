@@ -25,4 +25,7 @@ go.work
 *.swp
 *.swo
 *~
-devenv/ssh-keys/id_*
+
+# Kubeconfig might contain secrets
+*.kubeconfig
+
