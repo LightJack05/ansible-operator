@@ -20,4 +20,6 @@ metadata:
 spec:
   schedule: "0 0 * * *"
   playbook_ref:
-    name: inline-playbook
+    # ref to a playbook in the same namespace
+    # host selection is handled via the inventory, and the group referenced in the playbook
+    name: some-playbook
