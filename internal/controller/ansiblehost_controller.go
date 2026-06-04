@@ -68,29 +68,36 @@ func (r *AnsibleHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	///NOTE: We use requeue instead of returning an error in order to make sure we don't hammer the SSH server and trigger rate limits or lockouts.
+
 	// Check if the referenced SSH key secret exists and is valid
 	if err := r.checkHostCredentialExists(ctx, &ansibleHost); err != nil {
 		// If the secret does not exist or is invalid, we can log the error and requeue the request
 		// to check again later.
+
 		if err := r.setStatusNotReady(ctx, &ansibleHost, "SSHKeySecretInvalid", fmt.Sprintf("SSH key secret is missing or invalid: %v", err)); err != nil {
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("failed to update AnsibleHost status: %w", err)
+			lg.Error(fmt.Errorf("failed to update AnsibleHost status: %w", err), "AnsibleHost status update failed.")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("SSH key secret is missing or invalid: %w", err)
+		lg.Error(fmt.Errorf("SSH key secret is missing or invalid: %w", err), "SSH key secret validation failed.")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	// Ensure the host keys secret exists
 	if err := r.ensureHostKeysSecretExists(ctx, &ansibleHost); err != nil {
 		// If there was an error ensuring the host keys secret exists, we can log the error and requeue the request
 		if err := r.setStatusNotReady(ctx, &ansibleHost, "HostKeysSecretError", fmt.Sprintf("Failed to ensure host keys secret exists: %v", err)); err != nil {
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("failed to update AnsibleHost status: %w", err)
+			lg.Error(fmt.Errorf("failed to update AnsibleHost status: %w", err), "AnsibleHost status update failed.")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
 
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("failed to ensure host keys secret exists: %w", err)
+		lg.Error(fmt.Errorf("failed to ensure host keys secret exists: %w", err), "Host keys secret error.")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	// If we reach this point, the AnsibleHost is ready
 	if err := r.setStatusReady(ctx, &ansibleHost); err != nil {
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("failed to update AnsibleHost status: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to update AnsibleHost status: %w", err)
 	}
 	return ctrl.Result{}, nil
 }
@@ -163,9 +170,7 @@ func (r *AnsibleHostReconciler) ensureHostKeysSecretExists(ctx context.Context, 
 			return fmt.Errorf("failed to validate existing host keys secret: %w", err)
 		}
 		if !valid {
-			//TODO: set a status here to indicate that the host keys have changed
-			// 		DO NOT REISSUE, this will make the entire key exchange obsolete
-			// 		Wait for the user to delete the secret and then recreate it with new keys.
+			return fmt.Errorf("host keys secret does not match the actual host keys, you may be subject to MITM. Delete secret to reacquire host keys.")
 		}
 		return nil
 	}
