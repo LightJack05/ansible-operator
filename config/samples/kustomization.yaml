@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- anisble-operator_v1alpha1_ansiblehost.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
