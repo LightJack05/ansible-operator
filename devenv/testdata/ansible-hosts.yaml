@@ -1,0 +1,54 @@
+---
+apiVersion: anisble-operator.lightjack.de/v1alpha1
+kind: AnsibleHost
+metadata:
+  name: ssh-node-1
+  namespace: ansible-operator-system
+spec:
+  connection:
+    host: ssh-node-1.default.svc.cluster.local
+    user: ansible
+  ssh:
+    sshKeySecretRef:
+      name: ansible-operator-hosts-private-key
+    sshHostKeySecretRef:
+      name: ssh-node-1-host-key
+    ignoreHostKey: true
+  privilege:
+    become: true
+---
+apiVersion: anisble-operator.lightjack.de/v1alpha1
+kind: AnsibleHost
+metadata:
+  name: ssh-node-2
+  namespace: ansible-operator-system
+spec:
+  connection:
+    host: ssh-node-2.default.svc.cluster.local
+    user: ansible
+  ssh:
+    sshKeySecretRef:
+      name: ansible-operator-hosts-private-key
+    sshHostKeySecretRef:
+      name: ssh-node-2-host-key
+    ignoreHostKey: true
+  privilege:
+    become: true
+---
+apiVersion: anisble-operator.lightjack.de/v1alpha1
+kind: AnsibleHost
+metadata:
+  name: ssh-node-3
+  namespace: ansible-operator-system
+spec:
+  connection:
+    host: ssh-node-3.default.svc.cluster.local
+    user: ansible
+  ssh:
+    sshKeySecretRef:
+      name: ansible-operator-hosts-private-key
+    sshHostKeySecretRef:
+      name: ssh-node-3-host-key
+    ignoreHostKey: true
+  privilege:
+    become: true

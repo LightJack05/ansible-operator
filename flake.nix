@@ -32,6 +32,7 @@
           export DEV_NETWORK=ansible-operator
           export DEV_SUBNET="172.30.0.0/16"
           export KIND_EXPERIMENTAL_DOCKER_NETWORK=$DEV_NETWORK
+          export KIND_CLUSTER_NAME=ansible-operator-dev
           # Unset to ensure it doesn't run podman, docker is a requirement here
           export KIND_EXPERIMENTAL_PROVIDER=""
           export KUBECONFIG="$HOME/.kube/config.d/ansible-dev-env"
