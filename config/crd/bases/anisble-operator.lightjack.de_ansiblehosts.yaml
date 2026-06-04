@@ -39,10 +39,100 @@ spec:
           spec:
             description: spec defines the desired state of AnsibleHost
             properties:
-              foo:
-                description: foo is an example field of AnsibleHost. Edit ansiblehost_types.go
-                  to remove/update
+              ansibleName:
+                description: ansibleName is the name used in the Ansible inventory.
+                  Defaults to metadata.name.
+                maxLength: 253
+                pattern: ^[a-zA-Z0-9_.-]+$
                 type: string
+              connection:
+                description: connection defines SSH connection parameters for this
+                  host.
+                properties:
+                  host:
+                    description: host is the hostname or IP address to connect to.
+                    maxLength: 253
+                    pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*$
+                    type: string
+                  port:
+                    default: 22
+                    description: port is the SSH port number.
+                    format: int32
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                  user:
+                    default: root
+                    description: user is the SSH login user.
+                    maxLength: 32
+                    pattern: ^[a-z_][a-z0-9_-]*$
+                    type: string
+                required:
+                - host
+                type: object
+              hostVars:
+                description: hostVars is an arbitrary string inserted verbatim into
+                  the Ansible host_vars block.
+                type: string
+              privilege:
+                description: privilege defines privilege escalation settings.
+                properties:
+                  become:
+                    default: false
+                    description: become enables privilege escalation via sudo.
+                    type: boolean
+                type: object
+              ssh:
+                description: ssh defines SSH authentication configuration for this
+                  host.
+                properties:
+                  ignoreHostKey:
+                    default: false
+                    description: |-
+                      ignoreHostKey disables SSH host key verification when true.
+                      When false, the operator trusts the host key on first connection and stores it
+                      in a secret. The auto-created secret is named after the AnsibleHost resource
+                      unless sshHostKeySecretRef is provided.
+                    type: boolean
+                  sshHostKeySecretRef:
+                    description: |-
+                      sshHostKeySecretRef references a Secret used to store (or provide) the trusted SSH host key.
+                      When ignoreHostKey is false and this is unset, the operator creates a secret automatically.
+                      When set, the operator uses the referenced secret as the known-hosts store.
+                    properties:
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  sshKeySecretRef:
+                    description: |-
+                      sshKeySecretRef references a Secret containing the SSH private key.
+                      The secret must have the key `ansible_ssh_private_key_file`.
+                    properties:
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                required:
+                - sshKeySecretRef
+                type: object
+            required:
+            - connection
+            - ssh
             type: object
           status:
             description: status defines the observed state of AnsibleHost
