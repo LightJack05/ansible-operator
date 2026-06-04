@@ -132,24 +132,21 @@ func (r *AnsibleHostReconciler) checkHostCredentialExists(ctx context.Context, a
 	}
 
 	// Secret already exists, validate it
-	valid, err := r.secretHasValidSSHKey(&secret)
+	err = r.secretHasValidSSHKey(&secret)
 	if err != nil {
 		return fmt.Errorf("failed to validate existing secret: %w", err)
-	}
-	if !valid {
-		return fmt.Errorf("existing secret does not contain a valid SSH key")
 	}
 	return nil
 
 }
 
-func (r *AnsibleHostReconciler) secretHasValidSSHKey(secret *corev1.Secret) (bool, error) {
+func (r *AnsibleHostReconciler) secretHasValidSSHKey(secret *corev1.Secret) error {
 	var sshKey string
 	const keyName = "ansible_ssh_private_key_file"
 	if keyData, ok := secret.Data[keyName]; ok {
 		sshKey = string(keyData)
 	} else {
-		return false, fmt.Errorf("secret does not contain '%s' field", keyName)
+		return fmt.Errorf("secret does not contain '%s' field", keyName)
 	}
 
 	return ssh.ValidatePrivateSSHKey(sshKey)
