@@ -300,3 +300,34 @@ helm-history: ## Show Helm release history.
 .PHONY: helm-rollback
 helm-rollback: ## Rollback to previous Helm release.
 	$(HELM) rollback $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+# --- Kind Local Deployment Targets ---
+
+# Name of the image to build for local testing
+LOCAL_IMG ?= localhost/operator-test:local
+
+## Build the image, load it into kind, and deploy to the cluster
+.PHONY: kind-deploy
+kind-deploy:
+	$(MAKE) docker-build IMG=$(LOCAL_IMG)
+	@echo "Loading image $(LOCAL_IMG) into kind..."
+	bash -c 'TMPFILE=$$(mktemp) podman save "$(LOCAL_IMG)" --format oci-archive -o $TMPFILE; kind load image-archive $TMPFILE; rm $TMPFILE'
+	@echo "Deploying to kind..."
+	$(MAKE) deploy IMG=$(LOCAL_IMG)
+
+## Remove the deployment and the CRDs from the cluster
+.PHONY: kind-undeploy
+kind-undeploy:
+	@echo "Undeploying from kind..."
+	$(MAKE) undeploy
+
+# Dev Env
+.PHONY: devenv-up devenv-down reset-devenv
+devenv-up:
+	$(MAKE) -C devenv/ up
+
+devenv-down:
+	$(MAKE) -C devenv/ down
+
+reset-devenv:
+	$(MAKE) -C devenv/ recreate
