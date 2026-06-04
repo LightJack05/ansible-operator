@@ -1,4 +1,4 @@
-apiVersion: anisble-operator.lightjack.de/v1alpha1
+apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsibleHost
 metadata:
   labels:

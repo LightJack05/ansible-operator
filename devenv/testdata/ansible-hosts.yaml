@@ -1,5 +1,5 @@
 ---
-apiVersion: anisble-operator.lightjack.de/v1alpha1
+apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsibleHost
 metadata:
   name: ssh-node-1
@@ -17,7 +17,7 @@ spec:
   privilege:
     become: true
 ---
-apiVersion: anisble-operator.lightjack.de/v1alpha1
+apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsibleHost
 metadata:
   name: ssh-node-2
@@ -35,7 +35,7 @@ spec:
   privilege:
     become: true
 ---
-apiVersion: anisble-operator.lightjack.de/v1alpha1
+apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsibleHost
 metadata:
   name: ssh-node-3

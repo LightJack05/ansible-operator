@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: ansiblehosts.anisble-operator.lightjack.de
+  name: ansiblehosts.ansible-operator.lightjack.de
 spec:
-  group: anisble-operator.lightjack.de
+  group: ansible-operator.lightjack.de
   names:
     kind: AnsibleHost
     listKind: AnsibleHostList

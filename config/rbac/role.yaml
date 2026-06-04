@@ -16,7 +16,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - anisble-operator.lightjack.de
+  - ansible-operator.lightjack.de
   resources:
   - ansiblehosts
   verbs:
@@ -28,13 +28,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - anisble-operator.lightjack.de
+  - ansible-operator.lightjack.de
   resources:
   - ansiblehosts/finalizers
   verbs:
   - update
 - apiGroups:
-  - anisble-operator.lightjack.de
+  - ansible-operator.lightjack.de
   resources:
   - ansiblehosts/status
   verbs:

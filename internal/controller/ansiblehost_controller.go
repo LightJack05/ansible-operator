@@ -40,10 +40,10 @@ type AnsibleHostReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=anisble-operator.lightjack.de,resources=ansiblehosts,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=anisble-operator.lightjack.de,resources=ansiblehosts/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=anisble-operator.lightjack.de,resources=ansiblehosts/finalizers,verbs=update
-// +kubebuilder:rbac:groups=anisble-operator.lightjack.de,resources=ansiblehosts/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblehosts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblehosts/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblehosts/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblehosts/finalizers,verbs=update
 // Access for reading and writing the SSH keys
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;delete
 

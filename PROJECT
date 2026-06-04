@@ -18,7 +18,7 @@ resources:
     namespaced: true
   controller: true
   domain: lightjack.de
-  group: anisble-operator
+  group: ansible-operator
   kind: AnsibleHost
   path: github.com/LightJack05/ansible-operator/api/v1alpha1
   version: v1alpha1
