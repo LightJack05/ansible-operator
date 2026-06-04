@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -196,7 +197,6 @@ func (r *AnsibleHostReconciler) checkHostKeysSecret(ansibleHost *anisbleoperator
 		return false, fmt.Errorf("secret does not contain 'host_keys' field")
 	}
 	actualKeys := string(keyData)
-
 	return expectedKeys == actualKeys, nil
 }
 
@@ -232,7 +232,7 @@ func getHostKeys(ansibleHost *anisbleoperatorv1alpha1.AnsibleHost) (string, erro
 		return "", fmt.Errorf("failed to scan host keys: %w", err)
 	}
 
-	keyString, err := ssh.HostKeysToString(keys)
+	keyString, err := ssh.HostKeysToSortedString(keys)
 	if err != nil {
 		return "", fmt.Errorf("failed to convert host keys to string: %w", err)
 	}
@@ -244,6 +244,7 @@ func getHostKeys(ansibleHost *anisbleoperatorv1alpha1.AnsibleHost) (string, erro
 func (r *AnsibleHostReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&anisbleoperatorv1alpha1.AnsibleHost{}).
+		Owns(&corev1.Secret{}).
 		Named("ansiblehost").
 		Complete(r)
 }

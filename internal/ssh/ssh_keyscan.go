@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -110,11 +111,18 @@ func HostKeyToString(key ssh.PublicKey) string {
 	return string(ssh.MarshalAuthorizedKey(key))
 }
 
-func HostKeysToString(keys []ssh.PublicKey) (string, error) {
+func HostKeysToSortedString(keys []ssh.PublicKey) (string, error) {
+	var keyStrings []string
 	var keyString strings.Builder
 
 	for _, key := range keys {
-		keyString.WriteString(HostKeyToString(key))
+		keyStrings = append(keyStrings, HostKeyToString(key))
+	}
+
+	slices.Sort(keyStrings)
+
+	for _, key := range keyStrings {
+		keyString.WriteString(key)
 	}
 
 	return keyString.String(), nil
