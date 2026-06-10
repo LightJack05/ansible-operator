@@ -85,8 +85,7 @@ type AnsibleHostSSH struct {
 	SSHKeySecretRef corev1.LocalObjectReference `json:"sshKeySecretRef"`
 
 	// sshHostKeySecretRef references a Secret used to store (or provide) the trusted SSH host key.
-	// When ignoreHostKey is false and this is unset, the operator creates a secret automatically.
-	// When set, the operator uses the referenced secret as the known-hosts store.
+	// When ignoreHostKey is false, the operator uses the referenced secret as the known-hosts store.
 	// +required
 	SSHHostKeySecretRef corev1.LocalObjectReference `json:"sshHostKeySecretRef,omitempty"`
 }
