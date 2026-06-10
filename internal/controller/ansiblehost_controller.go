@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	anisbleoperatorv1alpha1 "github.com/LightJack05/ansible-operator/api/v1alpha1"
+	ansibleoperatorv1alpha1 "github.com/LightJack05/ansible-operator/api/v1alpha1"
 	"github.com/LightJack05/ansible-operator/internal/ssh"
 )
 
@@ -61,7 +61,7 @@ func (r *AnsibleHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	lg.Info("Reconciling AnsibleHost", "namespace", req.Namespace, "name", req.Name)
 
 	// Get the AnsibleHost resource
-	var ansibleHost anisbleoperatorv1alpha1.AnsibleHost
+	var ansibleHost ansibleoperatorv1alpha1.AnsibleHost
 	if err := r.Get(ctx, req.NamespacedName, &ansibleHost); err != nil {
 		// If the resource is not found, it might have been deleted after the reconcile request was queued.
 		// In this case, we can ignore the error and return.
@@ -91,7 +91,7 @@ func (r *AnsibleHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
-func (r *AnsibleHostReconciler) setStatusReady(ctx context.Context, ansibleHost *anisbleoperatorv1alpha1.AnsibleHost) error {
+func (r *AnsibleHostReconciler) setStatusReady(ctx context.Context, ansibleHost *ansibleoperatorv1alpha1.AnsibleHost) error {
 	meta.SetStatusCondition(&ansibleHost.Status.Conditions, metav1.Condition{
 		Type:    "Ready",
 		Status:  metav1.ConditionTrue,
@@ -105,7 +105,7 @@ func (r *AnsibleHostReconciler) setStatusReady(ctx context.Context, ansibleHost 
 	return nil
 }
 
-func (r *AnsibleHostReconciler) setStatusNotReady(ctx context.Context, ansibleHost *anisbleoperatorv1alpha1.AnsibleHost, reason, message string) error {
+func (r *AnsibleHostReconciler) setStatusNotReady(ctx context.Context, ansibleHost *ansibleoperatorv1alpha1.AnsibleHost, reason, message string) error {
 	meta.SetStatusCondition(&ansibleHost.Status.Conditions, metav1.Condition{
 		Type:    "Ready",
 		Status:  metav1.ConditionFalse,
@@ -119,7 +119,7 @@ func (r *AnsibleHostReconciler) setStatusNotReady(ctx context.Context, ansibleHo
 	return nil
 }
 
-func (r *AnsibleHostReconciler) ensureHostKeysSecretExists(ctx context.Context, ansibleHost *anisbleoperatorv1alpha1.AnsibleHost) error {
+func (r *AnsibleHostReconciler) ensureHostKeysSecretExists(ctx context.Context, ansibleHost *ansibleoperatorv1alpha1.AnsibleHost) error {
 	// Check if the host keys secret already exists
 	secret := &corev1.Secret{}
 	err := r.Get(ctx, client.ObjectKey{Namespace: ansibleHost.Namespace, Name: ansibleHost.Spec.SSH.SSHHostKeySecretRef.Name}, secret)
@@ -134,7 +134,7 @@ func (r *AnsibleHostReconciler) ensureHostKeysSecretExists(ctx context.Context, 
 
 }
 
-func (r *AnsibleHostReconciler) createHostKeysSecret(ctx context.Context, ansibleHost *anisbleoperatorv1alpha1.AnsibleHost) error {
+func (r *AnsibleHostReconciler) createHostKeysSecret(ctx context.Context, ansibleHost *ansibleoperatorv1alpha1.AnsibleHost) error {
 	hostKeys, err := getHostKeys(ansibleHost)
 	if err != nil {
 		return fmt.Errorf("failed to get host keys: %w", err)
@@ -160,7 +160,7 @@ func (r *AnsibleHostReconciler) createHostKeysSecret(ctx context.Context, ansibl
 	return nil
 }
 
-func getHostKeys(ansibleHost *anisbleoperatorv1alpha1.AnsibleHost) (string, error) {
+func getHostKeys(ansibleHost *ansibleoperatorv1alpha1.AnsibleHost) (string, error) {
 	keys, err := ssh.ScanHost(ansibleHost.Spec.Connection.Host, int(ansibleHost.Spec.Connection.Port))
 	if err != nil {
 		return "", fmt.Errorf("failed to scan host keys: %w", err)
@@ -177,7 +177,7 @@ func getHostKeys(ansibleHost *anisbleoperatorv1alpha1.AnsibleHost) (string, erro
 // SetupWithManager sets up the controller with the Manager.
 func (r *AnsibleHostReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&anisbleoperatorv1alpha1.AnsibleHost{}).
+		For(&ansibleoperatorv1alpha1.AnsibleHost{}).
 		Owns(&corev1.Secret{}).
 		Named("ansiblehost").
 		Complete(r)
