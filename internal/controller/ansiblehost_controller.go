@@ -70,16 +70,18 @@ func (r *AnsibleHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	///NOTE: We use requeue instead of returning an error in order to make sure we don't hammer the SSH server and trigger rate limits or lockouts.
 
-	// Ensure the host keys secret exists
-	if err := r.ensureHostKeysSecretExists(ctx, &ansibleHost); err != nil {
-		// If there was an error ensuring the host keys secret exists, we can log the error and requeue the request
-		if err := r.setStatusNotReady(ctx, &ansibleHost, "HostKeysSecretError", fmt.Sprintf("Failed to ensure host keys secret exists: %v", err)); err != nil {
-			lg.Error(fmt.Errorf("failed to update AnsibleHost status: %w", err), "AnsibleHost status update failed.")
+	// Ensure the host keys secret exists if we care about it
+	if !ansibleHost.Spec.SSH.IgnoreHostKey {
+		if err := r.ensureHostKeysSecretExists(ctx, &ansibleHost); err != nil {
+			// If there was an error ensuring the host keys secret exists, we can log the error and requeue the request
+			if err := r.setStatusNotReady(ctx, &ansibleHost, "HostKeysSecretError", fmt.Sprintf("Failed to ensure host keys secret exists: %v", err)); err != nil {
+				lg.Error(fmt.Errorf("failed to update AnsibleHost status: %w", err), "AnsibleHost status update failed.")
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			}
+
+			lg.Error(fmt.Errorf("failed to ensure host keys secret exists: %w", err), "Host keys secret error.")
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
-
-		lg.Error(fmt.Errorf("failed to ensure host keys secret exists: %w", err), "Host keys secret error.")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	// Set the host to ready once the result succeeds
