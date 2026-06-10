@@ -70,19 +70,6 @@ func (r *AnsibleHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	///NOTE: We use requeue instead of returning an error in order to make sure we don't hammer the SSH server and trigger rate limits or lockouts.
 
-	// Check if the referenced SSH key secret exists and is valid
-	if err := r.checkHostCredentialExists(ctx, &ansibleHost); err != nil {
-		// If the secret does not exist or is invalid, we can log the error and requeue the request
-		// to check again later.
-
-		if err := r.setStatusNotReady(ctx, &ansibleHost, "SSHKeySecretInvalid", fmt.Sprintf("SSH key secret is missing or invalid: %v", err)); err != nil {
-			lg.Error(fmt.Errorf("failed to update AnsibleHost status: %w", err), "AnsibleHost status update failed.")
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-		}
-		lg.Error(fmt.Errorf("SSH key secret is missing or invalid: %w", err), "SSH key secret validation failed.")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-	}
-
 	// Ensure the host keys secret exists
 	if err := r.ensureHostKeysSecretExists(ctx, &ansibleHost); err != nil {
 		// If there was an error ensuring the host keys secret exists, we can log the error and requeue the request
@@ -95,7 +82,7 @@ func (r *AnsibleHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	// If we reach this point, the AnsibleHost is ready
+	// Set the host to ready once the result succeeds
 	if err := r.setStatusReady(ctx, &ansibleHost); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update AnsibleHost status: %w", err)
 	}
@@ -130,50 +117,10 @@ func (r *AnsibleHostReconciler) setStatusNotReady(ctx context.Context, ansibleHo
 	return nil
 }
 
-func (r *AnsibleHostReconciler) checkHostCredentialExists(ctx context.Context, ansibleHost *anisbleoperatorv1alpha1.AnsibleHost) error {
-	// Check if the secret already exists
-	var secret corev1.Secret
-	err := r.Get(ctx, client.ObjectKey{Namespace: ansibleHost.Namespace, Name: ansibleHost.Spec.SSH.SSHKeySecretRef.Name}, &secret)
-	if err != nil {
-		return fmt.Errorf("secret %s not found in namespace %s: %w", ansibleHost.Spec.SSH.SSHKeySecretRef.Name, ansibleHost.ObjectMeta.Namespace, err)
-	}
-
-	// Secret already exists, validate it
-	err = r.secretHasValidSSHKey(&secret)
-	if err != nil {
-		return fmt.Errorf("failed to validate existing secret: %w", err)
-	}
-	return nil
-
-}
-
-func (r *AnsibleHostReconciler) secretHasValidSSHKey(secret *corev1.Secret) error {
-	var sshKey string
-	const keyName = "ansible_ssh_private_key_file"
-	if keyData, ok := secret.Data[keyName]; ok {
-		sshKey = string(keyData)
-	} else {
-		return fmt.Errorf("secret does not contain '%s' field", keyName)
-	}
-
-	return ssh.ValidatePrivateSSHKey(sshKey)
-}
-
 func (r *AnsibleHostReconciler) ensureHostKeysSecretExists(ctx context.Context, ansibleHost *anisbleoperatorv1alpha1.AnsibleHost) error {
 	// Check if the host keys secret already exists
 	secret := &corev1.Secret{}
 	err := r.Get(ctx, client.ObjectKey{Namespace: ansibleHost.Namespace, Name: ansibleHost.Spec.SSH.SSHHostKeySecretRef.Name}, secret)
-	if err == nil {
-		// Secret exists, validate it still matches the host keys
-		valid, err := r.checkHostKeysSecret(ansibleHost, secret)
-		if err != nil {
-			return fmt.Errorf("failed to validate existing host keys secret: %w", err)
-		}
-		if !valid {
-			return fmt.Errorf("host keys secret does not match the actual host keys, you may be subject to MITM. Delete secret to reacquire host keys.")
-		}
-		return nil
-	}
 	if errors.IsNotFound(err) {
 		// Secret does not exist, create it
 		if err := r.createHostKeysSecret(ctx, ansibleHost); err != nil {
@@ -183,20 +130,6 @@ func (r *AnsibleHostReconciler) ensureHostKeysSecretExists(ctx context.Context, 
 	}
 	return fmt.Errorf("failed to get host keys secret: %w", err)
 
-}
-
-func (r *AnsibleHostReconciler) checkHostKeysSecret(ansibleHost *anisbleoperatorv1alpha1.AnsibleHost, secret *corev1.Secret) (bool, error) {
-	expectedKeys, err := getHostKeys(ansibleHost)
-	if err != nil {
-		return false, fmt.Errorf("failed to get expected host keys: %w", err)
-	}
-
-	keyData, ok := secret.Data["host_keys"]
-	if !ok {
-		return false, fmt.Errorf("secret does not contain 'host_keys' field")
-	}
-	actualKeys := string(keyData)
-	return expectedKeys == actualKeys, nil
 }
 
 func (r *AnsibleHostReconciler) createHostKeysSecret(ctx context.Context, ansibleHost *anisbleoperatorv1alpha1.AnsibleHost) error {
