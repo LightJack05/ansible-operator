@@ -275,7 +275,7 @@ install-helm: ## Install the latest version of Helm.
 	}
 
 .PHONY: helm-deploy
-helm-deploy: install-helm ## Deploy manager to the K8s cluster via Helm. Specify an image with IMG.
+helm-deploy: kind-load-image ## Deploy manager to the K8s cluster via Helm. Specify an image with IMG.
 	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
 		--namespace $(HELM_NAMESPACE) \
 		--create-namespace \
@@ -310,12 +310,15 @@ KIND_CLUSTER_NAME ?= ansible-operator
 LOCAL_REPO ?= localhost/operator-test
 LOCAL_TAG ?= local
 
-## Build the image, load it into kind, and deploy to the cluster
-.PHONY: kind-deploy
-kind-deploy:
+.PHONY: kind-load-image
+kind-load-image:
 	$(MAKE) docker-build IMG=$(LOCAL_IMG)
 	@echo "Loading image $(LOCAL_IMG) into kind..."
 	bash -c 'TMPFILE=$$(mktemp); $(CONTAINER_TOOL) save "$(LOCAL_IMG)" -o $$TMPFILE; kind load image-archive -n $(KIND_CLUSTER_NAME) $$TMPFILE; rm $$TMPFILE'
+
+## Build the image, load it into kind, and deploy to the cluster
+.PHONY: kind-deploy
+kind-deploy: kind-load-image ## Deploy manager to the kind cluster.
 	@echo "Deploying to kind..."
 	$(MAKE) deploy IMG=$(LOCAL_IMG)
 

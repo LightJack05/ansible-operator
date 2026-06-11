@@ -22,11 +22,9 @@ jobs:
       - name: Test helm deployment
         run: |
           nix develop --command bash -c "
+            set -euxo pipefail
             export KUBECONFIG=$(mktemp)
             kind create cluster
-            go mod tidy
-            make docker-build IMG=ansible-operator:latest
-            kind load docker-image ansible-operator:latest
             helm lint ./dist/chart
             make helm-deploy IMG=ansible-operator:v0.1.0
             make helm-status
