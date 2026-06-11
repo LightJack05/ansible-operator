@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	ansibleoperatorv1alpha1 "github.com/LightJack05/ansible-operator/api/v1alpha1"
@@ -186,5 +187,8 @@ func (r *AnsibleHostReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&ansibleoperatorv1alpha1.AnsibleHost{}).
 		Owns(&corev1.Secret{}).
 		Named("ansiblehost").
+		// Run at most 100 concurrent reconciles.
+		// The high number here is irrelevant, since the threads aren't CPU bound, but just blocked on network IO for the most time.
+		WithOptions(controller.Options{MaxConcurrentReconciles: 100}).
 		Complete(r)
 }
