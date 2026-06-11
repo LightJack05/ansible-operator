@@ -130,8 +130,14 @@ func (r *AnsibleHostReconciler) ensureHostKeysSecretExists(ctx context.Context, 
 		}
 		return nil
 	}
-	return fmt.Errorf("failed to get host keys secret: %w", err)
 
+	if err != nil {
+		// some other error, retry next reconcile
+		return fmt.Errorf("failed to get host keys secret: %w", err)
+	}
+
+	// secret exists, nothing to do here
+	return nil
 }
 
 func (r *AnsibleHostReconciler) createHostKeysSecret(ctx context.Context, ansibleHost *ansibleoperatorv1alpha1.AnsibleHost) error {
