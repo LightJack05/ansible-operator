@@ -1,10 +1,6 @@
-.PHONY: up down recreate
+.PHONY: up down
 
 up:
 	./startup.sh
 down:
 	./shutdown.sh
-
-recreate:
-	./shutdown.sh
-	./startup.sh

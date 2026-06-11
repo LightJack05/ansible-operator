@@ -38,6 +38,10 @@ var (
 	shouldCleanupCertManager = false
 )
 
+const (
+	sshNodeImageName = "localhost/ssh-node-image:latest"
+)
+
 // TestE2E runs the e2e test suite to validate the solution in an isolated environment.
 // The default setup requires Kind and CertManager.
 //
@@ -54,11 +58,18 @@ var _ = BeforeSuite(func() {
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
 
+	By("building the ssh server image")
+	cmd = exec.Command("make", "ssh-node-image", fmt.Sprintf("SSH_NODE_IMG=%s", sshNodeImageName))
+	_, err = utils.Run(cmd)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build SSH node image")
+
 	// TODO(user): If you want to change the e2e test vendor from Kind,
 	// ensure the image is built and available, then remove the following block.
-	By("loading the manager image on Kind")
+	By("loading the images into Kind")
 	err = utils.LoadImageToKindClusterWithName(managerImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
+	err = utils.LoadImageToKindClusterWithName(sshNodeImageName)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the ssh node image into Kind")
 
 	setupCertManager()
 })

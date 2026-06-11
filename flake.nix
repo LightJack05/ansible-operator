@@ -9,9 +9,10 @@
     kindLib.url = "git+https://gitea.lightjack.de/LightJack05/nix-library?dir=lib/kind";
     # --- Optional libs (uncomment input + merge lines below to enable) ---
     # qemuLib.url = "git+https://gitea.lightjack.de/LightJack05/nix-library?dir=lib/qemu";
+    goLicenseCollectorLib.url = "git+https://gitea.lightjack.de/LightJack05/nix-library?dir=lib/go-license-collector";
   };
 
-  outputs = { self, nixpkgs, kubebuilderShell, generalLib, podmanLib, kindLib, ... }:
+  outputs = { self, nixpkgs, kubebuilderShell, generalLib, podmanLib, kindLib, goLicenseCollectorLib, ... }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
@@ -32,6 +33,7 @@
           export DEV_NETWORK=ansible-operator
           export DEV_SUBNET="172.30.0.0/16"
           export KIND_EXPERIMENTAL_DOCKER_NETWORK=$DEV_NETWORK
+          export KIND_CLUSTER_NAME=ansible-operator-dev
           # Unset to ensure it doesn't run podman, docker is a requirement here
           export KIND_EXPERIMENTAL_PROVIDER=""
           export KUBECONFIG="$HOME/.kube/config.d/ansible-dev-env"
@@ -61,6 +63,7 @@
               ++ generalLib.packages.${system}
               ++ podmanLib.packages.${system}
               ++ kindLib.packages.${system}
+              ++ goLicenseCollectorLib.packages.${system}
               ++ optionalPackages
               ++ extraPackages;
             shellHook = kubebuilderShell.shellConfig.${system}.shellHook

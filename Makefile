@@ -275,12 +275,12 @@ install-helm: ## Install the latest version of Helm.
 	}
 
 .PHONY: helm-deploy
-helm-deploy: install-helm ## Deploy manager to the K8s cluster via Helm. Specify an image with IMG.
+helm-deploy: kind-load-image ## Deploy manager to the K8s cluster via Helm. Specify an image with IMG.
 	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
 		--namespace $(HELM_NAMESPACE) \
 		--create-namespace \
-		--set manager.image.repository=$${IMG%:*} \
-		--set manager.image.tag=$${IMG##*:} \
+		--set manager.image.repository=$(LOCAL_REPO) \
+		--set manager.image.tag=$(LOCAL_TAG) \
 		--wait \
 		--timeout 5m \
 		$(HELM_EXTRA_ARGS)
@@ -305,13 +305,20 @@ helm-rollback: ## Rollback to previous Helm release.
 
 # Name of the image to build for local testing
 LOCAL_IMG ?= localhost/operator-test:local
+# Name of the kind cluster to use for local development deployment
+KIND_CLUSTER_NAME ?= ansible-operator
+LOCAL_REPO ?= localhost/operator-test
+LOCAL_TAG ?= local
+
+.PHONY: kind-load-image
+kind-load-image:
+	$(MAKE) docker-build IMG=$(LOCAL_IMG)
+	@echo "Loading image $(LOCAL_IMG) into kind..."
+	bash -c 'TMPFILE=$$(mktemp); $(CONTAINER_TOOL) save "$(LOCAL_IMG)" -o $$TMPFILE; kind load image-archive -n $(KIND_CLUSTER_NAME) $$TMPFILE; rm $$TMPFILE'
 
 ## Build the image, load it into kind, and deploy to the cluster
 .PHONY: kind-deploy
-kind-deploy:
-	$(MAKE) docker-build IMG=$(LOCAL_IMG)
-	@echo "Loading image $(LOCAL_IMG) into kind..."
-	bash -c 'TMPFILE=$$(mktemp) podman save "$(LOCAL_IMG)" --format oci-archive -o $TMPFILE; kind load image-archive $TMPFILE; rm $TMPFILE'
+kind-deploy: kind-load-image ## Deploy manager to the kind cluster.
 	@echo "Deploying to kind..."
 	$(MAKE) deploy IMG=$(LOCAL_IMG)
 
@@ -321,13 +328,23 @@ kind-undeploy:
 	@echo "Undeploying from kind..."
 	$(MAKE) undeploy
 
+# Additional images for Dev Env and tests
+
+SSH_NODE_IMG ?= localhost/ssh-node-image:latest
+
+.PHONY: ssh-node-image
+ssh-node-image:
+	docker build devenv/ssh-node/ -t $(SSH_NODE_IMG)
+
 # Dev Env
 .PHONY: devenv-up devenv-down reset-devenv
 devenv-up:
 	$(MAKE) -C devenv/ up
+	$(MAKE) kind-deploy
 
 devenv-down:
 	$(MAKE) -C devenv/ down
 
 reset-devenv:
-	$(MAKE) -C devenv/ recreate
+	$(MAKE) devenv-down
+	$(MAKE) devenv-up
