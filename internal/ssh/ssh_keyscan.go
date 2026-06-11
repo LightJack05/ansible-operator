@@ -41,7 +41,12 @@ func scanHostWithAlgos(host string, port int, keyTypes []string) (ssh.PublicKey,
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to %s:%d: %w", host, port, err)
 	}
-	defer connection.Close()
+	defer func() {
+		cerr := connection.Close()
+		if cerr != nil && err == nil {
+			err = fmt.Errorf("failed to close connection: %w", cerr)
+		}
+	}()
 	connection.SetDeadline(time.Now().Add(sshDialTimeout))
 
 	sshConn, channel, request, err := ssh.NewClientConn(connection, fmt.Sprintf("%s:%d", host, port), config)
