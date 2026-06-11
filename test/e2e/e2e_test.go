@@ -20,11 +20,14 @@ limitations under the License.
 package e2e
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -33,8 +36,13 @@ import (
 	"github.com/LightJack05/ansible-operator/test/utils"
 )
 
+// number of ssh nodes to spawn
+const sshNodeCount = 3
+
 // namespace where the project is deployed in
 const namespace = "ansible-operator-system"
+
+const sshNodeNamespace = "ssh-nodes"
 
 // serviceAccountName created for the project
 const serviceAccountName = "ansible-operator-controller-manager"
@@ -72,6 +80,8 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", managerImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+
+		By("deploying the ssh nodes")
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
@@ -268,19 +278,172 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(verifyMetricsAvailable, 2*time.Minute).Should(Succeed())
 		})
 
-		// +kubebuilder:scaffold:e2e-webhooks-checks
+	})
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+	Context("AnsibleHost", func() {
+		It("Should become ready and create a secret when configured correctly", func() {
+			By("Setting up 3 SSH hosts...")
+			setupSSHHosts(sshNodeNamespace)
+
+			By("Creating a test namespace and a valid AnsibleHost resource")
+			testNs := createRandomTestNamespace()
+
+			createValidAnsibleHost(
+				"valid-ansible-host",
+				testNs,
+				fmt.Sprintf("ssh-node-%d.%s.svc.cluster.local", 0, sshNodeNamespace),
+				"root",
+				"ssh-node-0-credentials",
+				"ssh-node-0-hostkey",
+				22,
+				false,
+			)
+
+			By("waiting for the AnsibleHost to become ready")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "ansiblehost", "valid-ansible-host",
+					"-n", testNs,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("True"), "AnsibleHost not ready")
+			}, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("waiting for the ansible host to create a secret")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "secret", "ssh-node-0-hostkey",
+					"-n", testNs,
+					"-o", "jsonpath={.data.host_keys}")
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("cleaning up the test namespace")
+			deleteNamespace(testNs)
+
+			By("removing the existing SSH hosts again")
+			deleteNamespace(sshNodeNamespace)
+		})
+
+		It("Should become not ready when configured incorrectly, and not create a secret", func() {
+			By("Setting up 3 SSH hosts...")
+			setupSSHHosts(sshNodeNamespace)
+
+			By("Creating a test namespace and a valid AnsibleHost resource")
+			testNs := createRandomTestNamespace()
+
+			createValidAnsibleHost(
+				"ansible-host",
+				testNs,
+				fmt.Sprintf("invalid-ssh-node-%d.%s.svc.cluster.local", 0, sshNodeNamespace),
+				"root",
+				"ssh-node-0-credentials",
+				"ssh-node-0-hostkey",
+				22,
+				false,
+			)
+
+			By("Waiting for the host to enter not ready state")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "ansiblehost", "ansible-host",
+					"-n", testNs,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("False"), "AnsibleHost ready, but shouldn't be")
+			}, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("waiting for the ansible host to not create a secret")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "secret", "ssh-node-0-hostkey",
+					"-n", testNs,
+					"-o", "jsonpath={.data.host_keys}")
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred())
+			}, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("cleaning up the test namespace")
+			deleteNamespace(testNs)
+
+			By("removing the existing SSH hosts again")
+			deleteNamespace(sshNodeNamespace)
+		})
 	})
 })
+
+func randomHex(n int) string {
+	b := make([]byte, n)
+	_, err := rand.Read(b)
+	Expect(err).NotTo(HaveOccurred())
+	return hex.EncodeToString(b)
+}
+
+func deleteNamespace(name string) {
+	GinkgoHelper()
+	cmd := exec.Command("kubectl", "delete", "namespace", name)
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+
+	namespaceList := func(g Gomega) {
+		stdout, err := utils.Run(exec.Command("kubectl", "get", "ns"))
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(stdout).ShouldNot(ContainSubstring(name))
+	}
+
+	Eventually(namespaceList).Should(Succeed())
+}
+
+func createRandomTestNamespace() string {
+	GinkgoHelper()
+	randomSuffix := randomHex(10)
+	namespace := fmt.Sprintf("test-namespace-%s", randomSuffix)
+	createNamespace(namespace)
+	return namespace
+}
+
+func createValidAnsibleHost(name, namespace, hostname, username, privateKeySecretName, hostKeySecretName string, port int, ignoreHostKeys bool) {
+	GinkgoHelper()
+	applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+	applyCmd.Stdin = strings.NewReader(templateAnsibleHost(
+		name,
+		namespace,
+		hostname,
+		username,
+		privateKeySecretName,
+		hostKeySecretName,
+		port,
+		ignoreHostKeys,
+	))
+	_, err := utils.Run(applyCmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create AnsibleHost")
+}
+
+func templateAnsibleHost(name, namespace, hostname, username, privateKeySecretName, hostKeySecretName string, port int, ignoreHostKeys bool) string {
+	return fmt.Sprintf(
+		`
+---
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleHost
+metadata:
+  name: %[1]s 
+  namespace: %[3]s 
+spec:
+  connection:
+    host: %[2]s
+    port: %[7]d
+    user: %[4]s
+  ssh:
+    sshKeySecretRef:
+      name: %[5]s
+    sshHostKeySecretRef:
+      name: %[6]s
+    ignoreHostKey: %[8]v
+  privilege:
+    become: true
+---
+`,
+		name, hostname, namespace, username, privateKeySecretName, hostKeySecretName, port, ignoreHostKeys)
+}
 
 // serviceAccountToken returns a token for the specified service account in the given namespace.
 // It uses the Kubernetes TokenRequest API to generate a token by directly sending a request
@@ -321,6 +484,81 @@ func serviceAccountToken() (string, error) {
 	Eventually(verifyTokenCreation).Should(Succeed())
 
 	return out, err
+}
+
+func setupSSHHosts(sshNodesNamespace string) {
+	GinkgoHelper()
+	createNamespace(sshNodesNamespace)
+	var manifests strings.Builder
+	for i := range sshNodeCount {
+		manifests.WriteString(templateSSHServer(sshNodesNamespace, i))
+	}
+
+	fmt.Println(manifests.String())
+	applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+	applyCmd.Stdin = strings.NewReader(manifests.String())
+	_, err := utils.Run(applyCmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create admin credentials Secret")
+
+	By("waiting for SSH Node Deployments to be available")
+
+	for i := range sshNodeCount {
+		By(fmt.Sprintf("waiting for SSH Node Deployment ssh-node-%d to be available", i))
+		cmd := exec.Command("kubectl", "wait", fmt.Sprintf("deployments/ssh-node-%d", i),
+			"--namespace", sshNodeNamespace,
+			"--for=condition=Available",
+			"--timeout=5m",
+		)
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "SSH deployment did not become available")
+	}
+}
+
+func createNamespace(name string) {
+	GinkgoHelper()
+	cmd := exec.Command("kubectl", "create", "namespace", name)
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func templateSSHServer(nodeNamespace string, nodeId int) string {
+	return fmt.Sprintf(`
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ssh-node-%[2]d
+  namespace: %[1]s
+spec:
+  selector:
+    matchLabels:
+      app: ssh-node-%[2]d
+  template:
+    metadata:
+      labels:
+        app: ssh-node-%[2]d
+    spec:
+      containers:
+      - name: ssh-node-%[2]d
+        image: localhost/ssh-node-image:latest
+        imagePullPolicy: Never
+        ports:
+        - name: ssh
+          containerPort: 22
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ssh-node-%[2]d
+  namespace: %[1]s
+spec:
+  selector:
+    app: ssh-node-%[2]d
+  ports:
+  - name: ssh
+    port: 22
+    targetPort: 22
+---
+`, nodeNamespace, nodeId)
 }
 
 // getMetricsOutput retrieves and returns the logs from the curl pod used to access the metrics endpoint.

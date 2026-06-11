@@ -323,6 +323,14 @@ kind-undeploy:
 	@echo "Undeploying from kind..."
 	$(MAKE) undeploy
 
+# Additional images for Dev Env and tests
+
+SSH_NODE_IMG ?= localhost/ssh-node-image:latest
+
+.PHONY: ssh-node-image
+ssh-node-image:
+	docker build devenv/ssh-node/ -t $(SSH_NODE_IMG)
+
 # Dev Env
 .PHONY: devenv-up devenv-down reset-devenv
 devenv-up:
