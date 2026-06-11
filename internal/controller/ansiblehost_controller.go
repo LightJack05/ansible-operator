@@ -75,11 +75,11 @@ func (r *AnsibleHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err := r.ensureHostKeysSecretExists(ctx, &ansibleHost); err != nil {
 			// If there was an error ensuring the host keys secret exists, we can log the error and requeue the request
 			if err := r.setStatusNotReady(ctx, &ansibleHost, "HostKeysSecretError", fmt.Sprintf("Failed to ensure host keys secret exists: %v", err)); err != nil {
-				lg.Error(fmt.Errorf("failed to update AnsibleHost status: %w", err), "AnsibleHost status update failed.")
+				lg.Error(err, "AnsibleHost status update failed.")
 				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 			}
 
-			lg.Error(fmt.Errorf("failed to ensure host keys secret exists: %w", err), "Host keys secret error.")
+			lg.Error(err, "Host keys secret error.")
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
 	}
