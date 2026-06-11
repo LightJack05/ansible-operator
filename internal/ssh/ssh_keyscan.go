@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -24,7 +25,7 @@ var sshKeyProbeGroups = [][]string{
 	{ssh.KeyAlgoRSA, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512},
 }
 
-func scanHostWithAlgos(host string, port int, keyTypes []string) (hostKey ssh.PublicKey, err error) {
+func scanHostWithAlgos(ctx context.Context, host string, port int, keyTypes []string) (hostKey ssh.PublicKey, err error) {
 	config := &ssh.ClientConfig{
 		User: "nobody",
 		// Callback that captures the host key and then aborts the connection
@@ -36,7 +37,7 @@ func scanHostWithAlgos(host string, port int, keyTypes []string) (hostKey ssh.Pu
 		HostKeyAlgorithms: keyTypes,
 	}
 
-	connection, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), sshDialTimeout)
+	connection, err := (&net.Dialer{Timeout: sshDialTimeout}).DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to %s:%d: %w", host, port, err)
 	}
@@ -69,7 +70,7 @@ func scanHostWithAlgos(host string, port int, keyTypes []string) (hostKey ssh.Pu
 	return hostKey, nil
 }
 
-func ScanHost(host string, port int) ([]ssh.PublicKey, error) {
+func ScanHost(ctx context.Context, host string, port int) ([]ssh.PublicKey, error) {
 	// The returned keys
 	var keys []ssh.PublicKey
 
@@ -83,7 +84,7 @@ func ScanHost(host string, port int) ([]ssh.PublicKey, error) {
 	// Start a goroutine for each group of key types
 	for _, group := range sshKeyProbeGroups {
 		go func(group []string) {
-			key, err := scanHostWithAlgos(host, port, group)
+			key, err := scanHostWithAlgos(ctx, host, port, group)
 			results <- result{key: key, err: err}
 		}(group)
 	}

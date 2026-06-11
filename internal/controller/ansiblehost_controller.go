@@ -189,7 +189,7 @@ func (r *AnsibleHostReconciler) ensureHostKeysSecretExists(ctx context.Context, 
 }
 
 func (r *AnsibleHostReconciler) createHostKeysSecret(ctx context.Context, ansibleHost *ansibleoperatorv1alpha1.AnsibleHost) error {
-	hostKeys, err := getHostKeys(ansibleHost)
+	hostKeys, err := getHostKeys(ctx, ansibleHost)
 	if err != nil {
 		return fmt.Errorf("failed to get host keys: %w", err)
 	}
@@ -214,8 +214,8 @@ func (r *AnsibleHostReconciler) createHostKeysSecret(ctx context.Context, ansibl
 	return nil
 }
 
-func getHostKeys(ansibleHost *ansibleoperatorv1alpha1.AnsibleHost) (string, error) {
-	keys, err := ssh.ScanHost(ansibleHost.Spec.Connection.Host, int(ansibleHost.Spec.Connection.Port))
+func getHostKeys(ctx context.Context, ansibleHost *ansibleoperatorv1alpha1.AnsibleHost) (string, error) {
+	keys, err := ssh.ScanHost(ctx, ansibleHost.Spec.Connection.Host, int(ansibleHost.Spec.Connection.Port))
 	if err != nil {
 		return "", fmt.Errorf("failed to scan host keys: %w", err)
 	}
