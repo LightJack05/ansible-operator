@@ -68,7 +68,7 @@ func (r *AnsibleHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	///NOTE: We use requeue instead of returning an error in order to make sure we don't hammer the SSH server and trigger rate limits or lockouts.
+	// NOTE: We use requeue instead of returning an error in order to make sure we don't hammer the SSH server and trigger rate limits or lockouts.
 
 	// Ensure the host keys secret exists if we care about it
 	if !ansibleHost.Spec.SSH.IgnoreHostKey {
