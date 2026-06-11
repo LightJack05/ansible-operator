@@ -112,7 +112,7 @@ func HostKeyToString(key ssh.PublicKey) string {
 }
 
 func HostKeysToSortedString(keys []ssh.PublicKey) (string, error) {
-	var keyStrings []string
+	var keyStrings = make([]string, 0, len(keys))
 	var keyString strings.Builder
 
 	for _, key := range keys {
