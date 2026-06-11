@@ -140,29 +140,33 @@ func (r *AnsibleHostReconciler) hostPrivateKeySecretExists(ctx context.Context, 
 }
 
 func (r *AnsibleHostReconciler) setStatusReady(ctx context.Context, ansibleHost *ansibleoperatorv1alpha1.AnsibleHost) error {
-	meta.SetStatusCondition(&ansibleHost.Status.Conditions, metav1.Condition{
+	changed := meta.SetStatusCondition(&ansibleHost.Status.Conditions, metav1.Condition{
 		Type:    "Ready",
 		Status:  metav1.ConditionTrue,
 		Reason:  "HostReady",
 		Message: "The AnsibleHost is ready to be used",
 	})
-	err := r.Status().Update(ctx, ansibleHost)
-	if err != nil {
-		return fmt.Errorf("failed to update AnsibleHost status: %w", err)
+	if changed {
+		err := r.Status().Update(ctx, ansibleHost)
+		if err != nil {
+			return fmt.Errorf("failed to update AnsibleHost status: %w", err)
+		}
 	}
 	return nil
 }
 
 func (r *AnsibleHostReconciler) setStatusNotReady(ctx context.Context, ansibleHost *ansibleoperatorv1alpha1.AnsibleHost, reason, message string) error {
-	meta.SetStatusCondition(&ansibleHost.Status.Conditions, metav1.Condition{
+	changed := meta.SetStatusCondition(&ansibleHost.Status.Conditions, metav1.Condition{
 		Type:    "Ready",
 		Status:  metav1.ConditionFalse,
 		Reason:  reason,
 		Message: message,
 	})
-	err := r.Status().Update(ctx, ansibleHost)
-	if err != nil {
-		return fmt.Errorf("failed to update AnsibleHost status: %w", err)
+	if changed {
+		err := r.Status().Update(ctx, ansibleHost)
+		if err != nil {
+			return fmt.Errorf("failed to update AnsibleHost status: %w", err)
+		}
 	}
 	return nil
 }
