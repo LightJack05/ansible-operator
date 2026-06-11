@@ -13,7 +13,7 @@ spec:
       name: ansible-operator-hosts-private-key
     sshHostKeySecretRef:
       name: ssh-node-1-host-key
-    ignoreHostKey: true
+    ignoreHostKey: false
   privilege:
     become: true
 ---
@@ -31,7 +31,7 @@ spec:
       name: ansible-operator-hosts-private-key
     sshHostKeySecretRef:
       name: ssh-node-2-host-key
-    ignoreHostKey: true
+    ignoreHostKey: false
   privilege:
     become: true
 ---
