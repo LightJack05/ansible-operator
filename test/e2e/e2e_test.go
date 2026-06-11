@@ -354,7 +354,7 @@ var _ = Describe("Manager", Ordered, func() {
 			}, 3*time.Minute, time.Second).Should(Succeed())
 
 			By("waiting for the ansible host to not create a secret")
-			Eventually(func(g Gomega) {
+			Consistently(func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "secret", "ssh-node-0-hostkey",
 					"-n", testNs,
 					"-o", "jsonpath={.data.host_keys}")

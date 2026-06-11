@@ -24,8 +24,7 @@ var sshKeyProbeGroups = [][]string{
 	{ssh.KeyAlgoRSA, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512},
 }
 
-func scanHostWithAlgos(host string, port int, keyTypes []string) (ssh.PublicKey, error) {
-	var hostKey ssh.PublicKey
+func scanHostWithAlgos(host string, port int, keyTypes []string) (hostKey ssh.PublicKey, err error) {
 	config := &ssh.ClientConfig{
 		User: "nobody",
 		// Callback that captures the host key and then aborts the connection
