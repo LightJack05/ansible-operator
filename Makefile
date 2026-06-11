@@ -279,8 +279,8 @@ helm-deploy: install-helm ## Deploy manager to the K8s cluster via Helm. Specify
 	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
 		--namespace $(HELM_NAMESPACE) \
 		--create-namespace \
-		--set manager.image.repository=$${IMG%:*} \
-		--set manager.image.tag=$${IMG##*:} \
+		--set manager.image.repository=$(LOCAL_REPO) \
+		--set manager.image.tag=$(LOCAL_TAG) \
 		--wait \
 		--timeout 5m \
 		$(HELM_EXTRA_ARGS)
@@ -307,6 +307,8 @@ helm-rollback: ## Rollback to previous Helm release.
 LOCAL_IMG ?= localhost/operator-test:local
 # Name of the kind cluster to use for local development deployment
 KIND_CLUSTER_NAME ?= ansible-operator
+LOCAL_REPO ?= localhost/operator-test
+LOCAL_TAG ?= local
 
 ## Build the image, load it into kind, and deploy to the cluster
 .PHONY: kind-deploy
