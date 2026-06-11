@@ -80,7 +80,7 @@ type AnsibleHostSSH struct {
 	IgnoreHostKey bool `json:"ignoreHostKey,omitempty"`
 
 	// sshKeySecretRef references a Secret containing the SSH private key.
-	// The secret must have the key `ansible_ssh_private_key_file`.
+	// The secret must have the key `ssh_key`.
 	// +required
 	SSHKeySecretRef corev1.LocalObjectReference `json:"sshKeySecretRef"`
 

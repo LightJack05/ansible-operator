@@ -21,6 +21,7 @@ package e2e
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -288,6 +289,8 @@ var _ = Describe("Manager", Ordered, func() {
 			By("Creating a test namespace and a valid AnsibleHost resource")
 			testNs := createRandomTestNamespace()
 
+			createSSHKeySecret(testNs, "ssh-node-0-credentials")
+
 			createValidAnsibleHost(
 				"valid-ansible-host",
 				testNs,
@@ -332,6 +335,8 @@ var _ = Describe("Manager", Ordered, func() {
 			By("Creating a test namespace and a valid AnsibleHost resource")
 			testNs := createRandomTestNamespace()
 
+			createSSHKeySecret(testNs, "ssh-node-0-credentials")
+
 			createValidAnsibleHost(
 				"ansible-host",
 				testNs,
@@ -360,7 +365,102 @@ var _ = Describe("Manager", Ordered, func() {
 					"-o", "jsonpath={.data.host_keys}")
 				_, err := utils.Run(cmd)
 				g.Expect(err).To(HaveOccurred())
-			}, 30 * time.Second, time.Second).Should(Succeed())
+			}, 30*time.Second, time.Second).Should(Succeed())
+
+			By("cleaning up the test namespace")
+			deleteNamespace(testNs)
+
+			By("removing the existing SSH hosts again")
+			deleteNamespace(sshNodeNamespace)
+		})
+
+		It("Should fail when there is no private key secret", func() {
+			By("Setting up 3 SSH hosts...")
+			setupSSHHosts(sshNodeNamespace)
+
+			By("Creating a test namespace and a valid AnsibleHost resource")
+			testNs := createRandomTestNamespace()
+
+			// Don't create the secret: createSSHKeySecret(testNs, "ssh-node-0-credentials")
+
+			createValidAnsibleHost(
+				"valid-ansible-host",
+				testNs,
+				fmt.Sprintf("ssh-node-%d.%s.svc.cluster.local", 0, sshNodeNamespace),
+				"root",
+				"ssh-node-0-credentials",
+				"ssh-node-0-hostkey",
+				22,
+				false,
+			)
+
+			By("waiting for the AnsibleHost to become not ready")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "ansiblehost", "valid-ansible-host",
+					"-n", testNs,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("False"), "AnsibleHost ready, but shouldn't be")
+			}, 3*time.Minute, time.Second).Should(Succeed())
+
+			// No secret should be created, we don't scan when there is no credential to access the key
+			By("waiting for the ansible host to not create a secret")
+			Consistently(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "secret", "ssh-node-0-hostkey",
+					"-n", testNs,
+					"-o", "jsonpath={.data.host_keys}")
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred())
+			}, 30*time.Second, time.Second).Should(Succeed())
+
+			By("cleaning up the test namespace")
+			deleteNamespace(testNs)
+
+			By("removing the existing SSH hosts again")
+			deleteNamespace(sshNodeNamespace)
+		})
+
+		It("Should fail when the private key secret is bogus", func() {
+			By("Setting up 3 SSH hosts...")
+			setupSSHHosts(sshNodeNamespace)
+
+			By("Creating a test namespace and a valid AnsibleHost resource")
+			testNs := createRandomTestNamespace()
+
+			// Create a bogus secret
+			applySSHKeySecret(testNs, "ssh-node-0-credentials", "this-is-not-a-valid-private-key")
+
+			createValidAnsibleHost(
+				"valid-ansible-host",
+				testNs,
+				fmt.Sprintf("ssh-node-%d.%s.svc.cluster.local", 0, sshNodeNamespace),
+				"root",
+				"ssh-node-0-credentials",
+				"ssh-node-0-hostkey",
+				22,
+				false,
+			)
+
+			By("waiting for the AnsibleHost to become not ready")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "ansiblehost", "valid-ansible-host",
+					"-n", testNs,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("False"), "AnsibleHost ready, but shouldn't be")
+			}, 3*time.Minute, time.Second).Should(Succeed())
+
+			// No secret should be created, we don't scan when there is no credential to access the key
+			By("waiting for the ansible host to not create a secret")
+			Consistently(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "secret", "ssh-node-0-hostkey",
+					"-n", testNs,
+					"-o", "jsonpath={.data.host_keys}")
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred())
+			}, 30*time.Second, time.Second).Should(Succeed())
 
 			By("cleaning up the test namespace")
 			deleteNamespace(testNs)
@@ -559,6 +659,49 @@ spec:
     targetPort: 22
 ---
 `, nodeNamespace, nodeId)
+}
+
+func createSSHKeySecret(namespace, secretName string) {
+	GinkgoHelper()
+	privateKey := generateSSHPrivateKey()
+	applySSHKeySecret(namespace, secretName, privateKey)
+}
+
+func applySSHKeySecret(namespace, secretName, privateKey string) {
+	GinkgoHelper()
+	secretManifest := fmt.Sprintf(`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+type: Opaque
+data:
+  ssh_key: %s
+`, secretName, namespace, base64.StdEncoding.EncodeToString([]byte(privateKey)))
+
+	applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+	applyCmd.Stdin = strings.NewReader(secretManifest)
+	_, err := utils.Run(applyCmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create SSH key secret")
+}
+
+func generateSSHPrivateKey() string {
+	GinkgoHelper()
+	// Generate a new SSH private key using the ssh-keygen command
+	cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-b", "2048", "-f", "/tmp/temp_ssh_key", "-N", "")
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to generate SSH private key")
+
+	// Read the generated private key from the file
+	privateKeyBytes, err := os.ReadFile("/tmp/temp_ssh_key")
+	Expect(err).NotTo(HaveOccurred(), "Failed to read generated SSH private key")
+
+	// Clean up the temporary key file
+	err = os.Remove("/tmp/temp_ssh_key")
+	Expect(err).NotTo(HaveOccurred(), "Failed to remove temporary SSH key file")
+
+	return string(privateKeyBytes)
 }
 
 // getMetricsOutput retrieves and returns the logs from the curl pod used to access the metrics endpoint.

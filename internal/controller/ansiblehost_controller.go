@@ -33,6 +33,7 @@ import (
 
 	ansibleoperatorv1alpha1 "github.com/LightJack05/ansible-operator/api/v1alpha1"
 	"github.com/LightJack05/ansible-operator/internal/ssh"
+	cryptoSSH "golang.org/x/crypto/ssh"
 )
 
 // AnsibleHostReconciler reconciles a AnsibleHost object
@@ -71,6 +72,30 @@ func (r *AnsibleHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// NOTE: We use requeue instead of returning an error in order to make sure we don't hammer the SSH server and trigger rate limits or lockouts.
 
+	// Ensure the private key secret exists
+	privateKeySecretExists, err := r.hostPrivateKeySecretExists(ctx, &ansibleHost)
+	if err != nil {
+		// If there was an error checking for the private key secret, we can log the error and requeue the request
+		if err := r.setStatusNotReady(ctx, &ansibleHost, "PrivateKeySecretError", fmt.Sprintf("Failed to check if private key secret exists: %v", err)); err != nil {
+			lg.Error(err, "AnsibleHost status update failed.")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+
+		lg.Error(err, "Private key secret error.")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	if !privateKeySecretExists {
+		// If the private key secret does not exist, we can log the error and requeue the request
+		if err := r.setStatusNotReady(ctx, &ansibleHost, "PrivateKeySecretMissing", "The private key secret does not exist"); err != nil {
+			lg.Error(err, "AnsibleHost status update failed.")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+
+		lg.Info("Private key secret does not exist, requeuing.")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
 	// Ensure the host keys secret exists if we care about it
 	if !ansibleHost.Spec.SSH.IgnoreHostKey {
 		if err := r.ensureHostKeysSecretExists(ctx, &ansibleHost); err != nil {
@@ -90,6 +115,28 @@ func (r *AnsibleHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to update AnsibleHost status: %w", err)
 	}
 	return ctrl.Result{}, nil
+}
+
+func (r *AnsibleHostReconciler) hostPrivateKeySecretExists(ctx context.Context, ansibleHost *ansibleoperatorv1alpha1.AnsibleHost) (bool, error) {
+	secret := &corev1.Secret{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: ansibleHost.Namespace, Name: ansibleHost.Spec.SSH.SSHKeySecretRef.Name}, secret)
+	if errors.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to get private key secret: %w", err)
+	}
+
+	keyData, ok := secret.Data["ssh_key"]
+	if !ok || len(keyData) == 0 {
+		return false, fmt.Errorf("private key secret is missing 'ssh_key' data or it is empty")
+	}
+
+	if _, err := cryptoSSH.ParsePrivateKey(keyData); err != nil {
+		return false, fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	return true, nil
 }
 
 func (r *AnsibleHostReconciler) setStatusReady(ctx context.Context, ansibleHost *ansibleoperatorv1alpha1.AnsibleHost) error {
