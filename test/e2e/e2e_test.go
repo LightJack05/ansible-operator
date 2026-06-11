@@ -360,7 +360,7 @@ var _ = Describe("Manager", Ordered, func() {
 					"-o", "jsonpath={.data.host_keys}")
 				_, err := utils.Run(cmd)
 				g.Expect(err).To(HaveOccurred())
-			}, 3*time.Minute, time.Second).Should(Succeed())
+			}, 30 * time.Second, time.Second).Should(Succeed())
 
 			By("cleaning up the test namespace")
 			deleteNamespace(testNs)
