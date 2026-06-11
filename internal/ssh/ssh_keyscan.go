@@ -47,7 +47,11 @@ func scanHostWithAlgos(host string, port int, keyTypes []string) (ssh.PublicKey,
 			err = fmt.Errorf("failed to close connection: %w", cerr)
 		}
 	}()
-	connection.SetDeadline(time.Now().Add(sshDialTimeout))
+
+	err = connection.SetDeadline(time.Now().Add(sshDialTimeout))
+	if err != nil {
+		return nil, fmt.Errorf("failed to set connection deadline: %w", err)
+	}
 
 	sshConn, channel, request, err := ssh.NewClientConn(connection, fmt.Sprintf("%s:%d", host, port), config)
 	if err == nil {
@@ -55,7 +59,10 @@ func scanHostWithAlgos(host string, port int, keyTypes []string) (ssh.PublicKey,
 		go ssh.DiscardRequests(request)
 		for range channel {
 		}
-		sshConn.Close()
+		err = sshConn.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to close SSH connection: %w", err)
+		}
 	}
 	if hostKey == nil {
 		return nil, fmt.Errorf("failed to capture host key from %s:%d: %w", host, port, err)
