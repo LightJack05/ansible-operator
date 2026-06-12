@@ -22,6 +22,9 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the ansible-operator itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- ansiblegroup_admin_role.yaml
+- ansiblegroup_editor_role.yaml
+- ansiblegroup_viewer_role.yaml
 - ansiblehost_admin_role.yaml
 - ansiblehost_editor_role.yaml
 - ansiblehost_viewer_role.yaml
