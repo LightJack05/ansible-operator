@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,9 +31,24 @@ type AnsibleGroupSpec struct {
 	// The following markers will use OpenAPI v3 schema to validate the value
 	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
 
-	// foo is an example field of AnsibleGroup. Edit ansiblegroup_types.go to remove/update
+	// AnsibleName is the name of the object within the Ansible inventory
+	// +required
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9_.-]+$`
+	// +kubebuilder:validation:MaxLength=253
+	AnsibleName string `json:"ansibleName"`
+
+	// Hosts is a list of references to AnsibleHost objects that are members of this group.
+	// +required
+	Hosts []corev1.LocalObjectReference `json:"hosts"`
+
+	// Groups is a list of references to other AnsibleGroup objects that are subgroups of this group.
+	// +required
+	Groups []corev1.LocalObjectReference `json:"groups"`
+
+	// TODO: Be wary of injection on this one, just like with hostVars.
+	// groupVars is an arbitrary string inserted verbatim into the Ansible group_vars file for this group.
 	// +optional
-	Foo *string `json:"foo,omitempty"`
+	GroupVars string `json:"groupVars,omitempty"`
 }
 
 // AnsibleGroupStatus defines the observed state of AnsibleGroup.
