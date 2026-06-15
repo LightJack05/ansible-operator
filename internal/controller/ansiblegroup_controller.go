@@ -175,13 +175,13 @@ func (r *AnsibleGroupReconciler) checkGroupHealth(ctx context.Context, group *an
 func (r *AnsibleGroupReconciler) isGroupsArrayOk(ctx context.Context, group *ansibleoperatorv1alpha1.AnsibleGroup) (missingGroups, unhealthyGroups []v1.LocalObjectReference, err error) {
 	// Rely on the cache from kubebuilder for the API requests, this should be nearly O(1) lookups and should only do one List already
 	for _, subgroup := range group.Spec.Groups {
-		var subgrouObject ansibleoperatorv1alpha1.AnsibleHost
-		err := r.Client.Get(ctx, client.ObjectKey{Namespace: group.Namespace, Name: subgroup.Name}, &subgrouObject)
+		var subgroupObject ansibleoperatorv1alpha1.AnsibleGroup
+		err := r.Client.Get(ctx, client.ObjectKey{Namespace: group.Namespace, Name: subgroup.Name}, &subgroupObject)
 		if errors.IsNotFound(err) {
 			missingGroups = append(missingGroups, subgroup)
 		} else if err != nil {
 			return nil, nil, fmt.Errorf("unable to check health for object '%s': %v", subgroup.Name, err)
-		} else if meta.FindStatusCondition(subgrouObject.Status.Conditions, "Ready").Status != metav1.ConditionTrue {
+		} else if condition := meta.FindStatusCondition(subgroupObject.Status.Conditions, "Ready"); condition == nil || condition.Status != metav1.ConditionTrue {
 			unhealthyGroups = append(unhealthyGroups, subgroup)
 		}
 	}
@@ -198,7 +198,7 @@ func (r *AnsibleGroupReconciler) isHostsArrayOk(ctx context.Context, group *ansi
 			missingHosts = append(missingHosts, host)
 		} else if err != nil {
 			return nil, nil, fmt.Errorf("unable to check health for object '%s': %v", host.Name, err)
-		} else if meta.FindStatusCondition(hostObject.Status.Conditions, "Ready").Status != metav1.ConditionTrue {
+		} else if condition := meta.FindStatusCondition(hostObject.Status.Conditions, "Ready"); condition == nil || condition.Status != metav1.ConditionTrue {
 			unhealthyHosts = append(unhealthyHosts, host)
 		}
 	}
