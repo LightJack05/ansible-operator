@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	AnsibleGroupConditionReady = "Ready"
+	AnsibleGroupConditionReady           = "Ready"
 	AnsibleGroupConditionReferencesValid = "ReferencesValid"
 )
 
