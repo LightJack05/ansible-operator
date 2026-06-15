@@ -66,13 +66,17 @@ func (r *AnsibleGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// Fetch the AnsibleGroup instance
 	var group ansibleoperatorv1alpha1.AnsibleGroup
-	if err := r.Client.Get(ctx, req.NamespacedName, &group); err != nil {
+	if err := r.Get(ctx, req.NamespacedName, &group); err != nil {
 		if errors.IsNotFound(err) {
 			lg.Info("AnsibleGroup resource not found. Ignoring since object must be deleted.")
 			return ctrl.Result{}, nil
 		}
-		r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady, metav1.ConditionFalse, "Error", fmt.Sprintf("Failed to get AnsibleGroup: %v", err))
-		r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReferencesValid, metav1.ConditionFalse, "Error", fmt.Sprintf("Failed to get AnsibleGroup: %v", err))
+		if err := r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady, metav1.ConditionFalse, "Error", fmt.Sprintf("Failed to get AnsibleGroup: %v", err)); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+		}
+		if err := r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReferencesValid, metav1.ConditionFalse, "Error", fmt.Sprintf("Failed to get AnsibleGroup: %v", err)); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+		}
 		lg.Error(err, "Failed to get AnsibleGroup")
 		return ctrl.Result{}, err
 	}
@@ -80,8 +84,12 @@ func (r *AnsibleGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// Check the health of the group by verifying the existence and health of referenced hosts and subgroups
 	healthResult, err := r.checkGroupHealth(ctx, &group)
 	if err != nil {
-		r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady, metav1.ConditionFalse, "Error", fmt.Sprintf("Failed to check group health: %v", err))
-		r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReferencesValid, metav1.ConditionFalse, "Error", fmt.Sprintf("Failed to check group health: %v", err))
+		if err := r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady, metav1.ConditionFalse, "Error", fmt.Sprintf("Failed to check group health: %v", err)); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+		}
+		if err := r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReferencesValid, metav1.ConditionFalse, "Error", fmt.Sprintf("Failed to check group health: %v", err)); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+		}
 		lg.Error(err, "Failed to check group health")
 		return ctrl.Result{}, err
 	}
@@ -91,8 +99,12 @@ func (r *AnsibleGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	if !refsInvalid && !objectsUnhealthy {
 		// If everything is healthy, set the conditions to True and return
-		r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady, metav1.ConditionTrue, "AllHealthy", "All referenced hosts and subgroups are healthy")
-		r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReferencesValid, metav1.ConditionTrue, "AllValid", "All referenced hosts and subgroups are valid")
+		if err := r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady, metav1.ConditionTrue, "AllHealthy", "All referenced hosts and subgroups are healthy"); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+		}
+		if err := r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReferencesValid, metav1.ConditionTrue, "AllValid", "All referenced hosts and subgroups are valid"); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -106,7 +118,9 @@ func (r *AnsibleGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		invalidReferenceStringBuilder.WriteString(objectReferenceListToString(healthResult.subgroupsNotFound))
 		invalidReferenceStringBuilder.WriteString(";")
 
-		r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReferencesValid, metav1.ConditionFalse, "InvalidReferences", fmt.Sprintf("One or more references are invalid: %s", invalidReferenceStringBuilder.String()))
+		if err := r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReferencesValid, metav1.ConditionFalse, "InvalidReferences", fmt.Sprintf("One or more references are invalid: %s", invalidReferenceStringBuilder.String())); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+		}
 	}
 
 	var unhealthyMessageStringBuilder strings.Builder
@@ -119,11 +133,13 @@ func (r *AnsibleGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		unhealthyMessageStringBuilder.WriteString(objectReferenceListToString(healthResult.subgroupsNotHealthy))
 		unhealthyMessageStringBuilder.WriteString(";")
 
-		r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady, metav1.ConditionFalse, "UnhealthyReferences", fmt.Sprintf("One or more referenced objects are unhealthy: %s", unhealthyMessageStringBuilder.String()))
+		if err := r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady, metav1.ConditionFalse, "UnhealthyReferences", fmt.Sprintf("One or more referenced objects are unhealthy: %s", unhealthyMessageStringBuilder.String())); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+		}
 	}
 
 	// For now, rely on backoff retry when a group is unhealthy to catch changes
-	return ctrl.Result{}, fmt.Errorf("One or more references are invalid or unhealthy: %s %s", invalidReferenceStringBuilder.String(), unhealthyMessageStringBuilder.String())
+	return ctrl.Result{}, fmt.Errorf("one or more references are invalid or unhealthy: %s %s", invalidReferenceStringBuilder.String(), unhealthyMessageStringBuilder.String())
 }
 
 func objectReferenceListToString(refs []v1.LocalObjectReference) string {
@@ -144,7 +160,7 @@ func (r *AnsibleGroupReconciler) setCondition(ctx context.Context, group *ansibl
 	})
 
 	if changed {
-		if err := r.Client.Status().Update(ctx, group); err != nil {
+		if err := r.Status().Update(ctx, group); err != nil {
 			return fmt.Errorf("unable to update AnsibleGroup status: %v", err)
 		}
 	}
@@ -176,7 +192,7 @@ func (r *AnsibleGroupReconciler) isGroupsArrayOk(ctx context.Context, group *ans
 	// Rely on the cache from kubebuilder for the API requests, this should be nearly O(1) lookups and should only do one List already
 	for _, subgroup := range group.Spec.Groups {
 		var subgroupObject ansibleoperatorv1alpha1.AnsibleGroup
-		err := r.Client.Get(ctx, client.ObjectKey{Namespace: group.Namespace, Name: subgroup.Name}, &subgroupObject)
+		err := r.Get(ctx, client.ObjectKey{Namespace: group.Namespace, Name: subgroup.Name}, &subgroupObject)
 		if errors.IsNotFound(err) {
 			missingGroups = append(missingGroups, subgroup)
 		} else if err != nil {
@@ -193,7 +209,7 @@ func (r *AnsibleGroupReconciler) isHostsArrayOk(ctx context.Context, group *ansi
 	// Rely on the cache from kubebuilder for the API requests, this should be nearly O(1) lookups and should only do one List already
 	for _, host := range group.Spec.Hosts {
 		var hostObject ansibleoperatorv1alpha1.AnsibleHost
-		err := r.Client.Get(ctx, client.ObjectKey{Namespace: group.Namespace, Name: host.Name}, &hostObject)
+		err := r.Get(ctx, client.ObjectKey{Namespace: group.Namespace, Name: host.Name}, &hostObject)
 		if errors.IsNotFound(err) {
 			missingHosts = append(missingHosts, host)
 		} else if err != nil {
