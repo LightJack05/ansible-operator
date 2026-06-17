@@ -269,7 +269,7 @@ var _ = Describe("Manager", Ordered, func() {
 	})
 
 	AnsibleHostTests()
-
+	AnsibleGroupTests()
 })
 
 // getMetricsOutput retrieves and returns the logs from the curl pod used to access the metrics endpoint.

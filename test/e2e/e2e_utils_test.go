@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -154,9 +155,13 @@ func serviceAccountToken() (string, error) {
 func setupSSHHosts(sshNodesNamespace string) {
 	GinkgoHelper()
 	createNamespace(sshNodesNamespace)
+	createSSHHosts(sshNodesNamespace)
+}
+
+func createSSHHosts(namespace string) {
 	var manifests strings.Builder
 	for i := range sshNodeCount {
-		manifests.WriteString(templateSSHServer(sshNodesNamespace, i))
+		manifests.WriteString(templateSSHServer(namespace, i))
 	}
 
 	fmt.Println(manifests.String())
@@ -170,7 +175,7 @@ func setupSSHHosts(sshNodesNamespace string) {
 	for i := range sshNodeCount {
 		By(fmt.Sprintf("waiting for SSH Node Deployment ssh-node-%d to be available", i))
 		cmd := exec.Command("kubectl", "wait", fmt.Sprintf("deployments/ssh-node-%d", i),
-			"--namespace", sshNodeNamespace,
+			"--namespace", namespace,
 			"--for=condition=Available",
 			"--timeout=5m",
 		)
@@ -269,3 +274,53 @@ func generateSSHPrivateKey() string {
 	return string(privateKeyBytes)
 }
 
+func createAnsibleGroup(name, namespace, groupVars string, hostNames, groupnames []string) {
+	GinkgoHelper()
+	applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+	applyCmd.Stdin = strings.NewReader(templateAnsibleGroup(name, namespace, groupVars, hostNames, groupnames))
+	_, err := utils.Run(applyCmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create AnsibleGroup")
+}
+
+func templateAnsibleGroup(name, namespace, groupVars string, hostNames, groupNames []string) string {
+	type AnsibleGroupTemplateData struct {
+		Name       string
+		Namespace  string
+		GroupVars  string
+		HostNames  []string
+		GroupNames []string
+	}
+
+	tmpl, err := template.New("ansibleGroup").Parse(`
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleGroup
+metadata:
+  name: {{ .Name }}
+  namespace: {{ .Namespace }}
+spec:
+  ansibleName: {{ .Name }}
+  groupVars: "{{ .GroupVars }}"
+  hosts:{{ if not .HostNames }} []{{ end }}
+{{- range .HostNames }}
+  - name: {{ . }}
+{{- end }}
+  groups:{{ if not .GroupNames }} []{{ end }}
+{{- range .GroupNames }}
+  - name: {{ . }}
+{{- end }}
+`)
+	Expect(err).NotTo(HaveOccurred(), "Failed to parse AnsibleGroup template")
+	ansibleGroup := AnsibleGroupTemplateData{
+		Name:       name,
+		Namespace:  namespace,
+		GroupVars:  groupVars,
+		HostNames:  hostNames,
+		GroupNames: groupNames,
+	}
+	var renderedGroup strings.Builder
+	err = tmpl.Execute(&renderedGroup, ansibleGroup)
+	Expect(err).NotTo(HaveOccurred(), "Failed to render AnsibleGroup template")
+	output := renderedGroup.String()
+	fmt.Println(output)
+	return output
+}
