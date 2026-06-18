@@ -76,9 +76,15 @@ func (r *AnsibleGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Set all conditions to unknown if they are not set
-	r.defaultStatusToUnknown(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionHealthy)
-	r.defaultStatusToUnknown(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReferencesValid)
-	r.defaultStatusToUnknown(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady)
+	if err := r.defaultStatusToUnknown(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionHealthy); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+	}
+	if err := r.defaultStatusToUnknown(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReferencesValid); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+	}
+	if err := r.defaultStatusToUnknown(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+	}
 
 	// Check the health of the group by verifying the existence and health of referenced hosts and subgroups
 	healthResult, err := r.checkGroupHealth(ctx, &group)
@@ -145,15 +151,8 @@ func (r *AnsibleGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	if objectsUnhealthy || refsInvalid {
-		if err := r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady, metav1.ConditionFalse, "UnhealthyOrInvalidReferences", "One or more references are invalid or unhealthy."); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
-		}
-	}
-	if !objectsUnhealthy && !refsInvalid {
-		if err := r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady, metav1.ConditionTrue, "Ready", "AnsibleGroup is ready"); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
-		}
+	if err := r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady, metav1.ConditionFalse, "UnhealthyOrInvalidReferences", "One or more references are invalid or unhealthy."); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
 	}
 
 	return ctrl.Result{}, fmt.Errorf("one or more references are invalid or unhealthy: %s %s", invalidReferenceStringBuilder.String(), unhealthyMessageStringBuilder.String())
