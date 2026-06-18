@@ -152,9 +152,9 @@ func AnsibleGroupTests() {
 					make([]string, 0),
 				)
 				By("waiting for the AnsibleGroup to become not ready")
-				waitForAnsibleGroupNotReady("invalid-host-ref-group", testResourceNamespace)
-				referencesValidStatusOnAnsibleGroupShouldContain("invalid-host-ref-group", testResourceNamespace, "nonexistant-host")
-				referencesValidStatusOnAnsibleGroupShouldHaveReason("invalid-host-ref-group", testResourceNamespace, "InvalidReferences")
+				ansibleGroupConditionShouldBe("invalid-host-ref-group", testResourceNamespace, "Ready", "False")
+				ansibleGroupConditionShouldBe("invalid-host-ref-group", testResourceNamespace, "ReferencesValid", "False")
+				ansibleGroupConditionMessageShouldContain("invalid-host-ref-group", testResourceNamespace, "ReferencesValid", "nonexistant-host")
 			})
 			It("should become not ready when it references a nonexistant child group", func() {
 				By("Creating an ansible group that references a nonexistant child group")
@@ -166,9 +166,9 @@ func AnsibleGroupTests() {
 					[]string{"static-valid-ansible-group", "nonexistant-child-group"},
 				)
 				By("waiting for the AnsibleGroup to become not ready")
-				waitForAnsibleGroupNotReady("invalid-child-group-ref-group", testResourceNamespace)
-				referencesValidStatusOnAnsibleGroupShouldContain("invalid-child-group-ref-group", testResourceNamespace, "nonexistant-child-group")
-				referencesValidStatusOnAnsibleGroupShouldHaveReason("invalid-child-group-ref-group", testResourceNamespace, "InvalidReferences")
+				ansibleGroupConditionShouldBe("invalid-child-group-ref-group", testResourceNamespace, "Ready", "False")
+				ansibleGroupConditionShouldBe("invalid-child-group-ref-group", testResourceNamespace, "ReferencesValid", "False")
+				ansibleGroupConditionMessageShouldContain("invalid-child-group-ref-group", testResourceNamespace, "ReferencesValid", "nonexistant-child-group")
 			})
 			It("should become not ready when it references a nonexistant host and a nonexistant child group", func() {
 				By("Creating an ansible group that references a nonexistant host and a nonexistant child group")
@@ -180,11 +180,10 @@ func AnsibleGroupTests() {
 					[]string{"static-valid-ansible-group", "nonexistant-child-group"},
 				)
 				By("waiting for the AnsibleGroup to become not ready")
-				waitForAnsibleGroupNotReady("invalid-host-and-child-group-ref-group", testResourceNamespace)
-				referencesValidStatusOnAnsibleGroupShouldContain("invalid-host-and-child-group-ref-group", testResourceNamespace, "nonexistant-host")
-				referencesValidStatusOnAnsibleGroupShouldContain("invalid-host-and-child-group-ref-group", testResourceNamespace, "nonexistant-child-group")
-				referencesValidStatusOnAnsibleGroupShouldHaveReason("invalid-host-and-child-group-ref-group", testResourceNamespace, "InvalidReferences")
-				readyStatusOnAnsibleGroupShouldHaveReason("invalid-host-and-child-group-ref-group", testResourceNamespace, "InvalidReferences")
+				ansibleGroupConditionShouldBe("invalid-host-and-child-group-ref-group", testResourceNamespace, "Ready", "False")
+				ansibleGroupConditionShouldBe("invalid-host-and-child-group-ref-group", testResourceNamespace, "ReferencesValid", "False")
+				ansibleGroupConditionMessageShouldContain("invalid-host-and-child-group-ref-group", testResourceNamespace, "ReferencesValid", "nonexistant-host")
+				ansibleGroupConditionMessageShouldContain("invalid-host-and-child-group-ref-group", testResourceNamespace, "ReferencesValid", "nonexistant-child-group")
 			})
 		})
 		Context("when created with unready child resources", func() {
@@ -198,9 +197,10 @@ func AnsibleGroupTests() {
 					make([]string, 0),
 				)
 				By("waiting for the AnsibleGroup to become not ready")
-				waitForAnsibleGroupNotReady("unready-host-ref-group", testResourceNamespace)
-				readyStatusOnAnsibleGroupShouldContain("unready-host-ref-group", testResourceNamespace, "unready-ansible-host")
-				readyStatusOnAnsibleGroupShouldHaveReason("unready-host-ref-group", testResourceNamespace, "UnhealthyReferences")
+				ansibleGroupConditionShouldBe("unready-host-ref-group", testResourceNamespace, "Ready", "False")
+				ansibleGroupConditionShouldBe("unready-host-ref-group", testResourceNamespace, "Healthy", "False")
+				ansibleGroupConditionShouldBe("unready-host-ref-group", testResourceNamespace, "ReferencesValid", "True")
+				ansibleGroupConditionMessageShouldContain("unready-host-ref-group", testResourceNamespace, "Healthy", "unready-ansible-host")
 			})
 			It("should become not ready when it has an unready child group", func() {
 				By("Creating an ansible group that references an unready child group")
@@ -212,9 +212,10 @@ func AnsibleGroupTests() {
 					[]string{"static-valid-ansible-group", "unready-ansible-group"},
 				)
 				By("waiting for the AnsibleGroup to become not ready")
-				waitForAnsibleGroupNotReady("unready-child-group-ref-group", testResourceNamespace)
-				readyStatusOnAnsibleGroupShouldContain("unready-child-group-ref-group", testResourceNamespace, "unready-ansible-group")
-				readyStatusOnAnsibleGroupShouldHaveReason("unready-child-group-ref-group", testResourceNamespace, "UnhealthyReferences")
+				ansibleGroupConditionShouldBe("unready-child-group-ref-group", testResourceNamespace, "Ready", "False")
+				ansibleGroupConditionShouldBe("unready-child-group-ref-group", testResourceNamespace, "Healthy", "False")
+				ansibleGroupConditionShouldBe("unready-child-group-ref-group", testResourceNamespace, "ReferencesValid", "True")
+				ansibleGroupConditionMessageShouldContain("unready-child-group-ref-group", testResourceNamespace, "Healthy", "unready-ansible-group")
 			})
 			It("should become not ready when it has an unready host and an unready child group", func() {
 				By("Creating an ansible group that references an unready host and an unready child group")
@@ -227,56 +228,49 @@ func AnsibleGroupTests() {
 				)
 				By("waiting for the AnsibleGroup to become not ready")
 				waitForAnsibleGroupNotReady("unready-host-and-child-group-ref-group", testResourceNamespace)
-				readyStatusOnAnsibleGroupShouldContain("unready-host-and-child-group-ref-group", testResourceNamespace, "unready-ansible-host")
-				readyStatusOnAnsibleGroupShouldContain("unready-host-and-child-group-ref-group", testResourceNamespace, "unready-ansible-group")
-				readyStatusOnAnsibleGroupShouldHaveReason("unready-host-and-child-group-ref-group", testResourceNamespace, "UnhealthyReferences")
+				ansibleGroupConditionShouldBe("unready-host-and-child-group-ref-group", testResourceNamespace, "Ready", "False")
+				ansibleGroupConditionShouldBe("unready-host-and-child-group-ref-group", testResourceNamespace, "Healthy", "False")
+				ansibleGroupConditionShouldBe("unready-host-and-child-group-ref-group", testResourceNamespace, "ReferencesValid", "True")
+				ansibleGroupConditionMessageShouldContain("unready-host-and-child-group-ref-group", testResourceNamespace, "Healthy", "unready-ansible-host")
+				ansibleGroupConditionMessageShouldContain("unready-host-and-child-group-ref-group", testResourceNamespace, "Healthy", "unready-ansible-group")
 			})
 		})
 	})
 }
 
-func referencesValidStatusOnAnsibleGroupShouldContain(name, namespace, expectedStatus string) {
+func ansibleGroupConditionShouldBe(name, namespace, condition, status string) {
 	GinkgoHelper()
 	Eventually(func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", "ansiblegroup", name,
 			"-n", namespace,
-			"-o", "jsonpath={.status.conditions[?(@.type=='ReferencesValid')].message}")
+			"-o", fmt.Sprintf("jsonpath={.status.conditions[?(@.type=='%s')].status}", condition))
 		output, err := utils.Run(cmd)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(output).To(ContainSubstring(expectedStatus), fmt.Sprintf("AnsibleGroup Ready status does not contain %s", expectedStatus))
+		g.Expect(output).To(Equal(status), fmt.Sprintf("AnsibleGroup %s status message is not %s", condition, status))
 	}, 3*time.Minute, time.Second).Should(Succeed())
 }
-func referencesValidStatusOnAnsibleGroupShouldHaveReason(name, namespace, expectedReason string) {
+
+func ansibleGroupConditionReasonShouldBe(name, namespace, condition, reason string) {
 	GinkgoHelper()
 	Eventually(func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", "ansiblegroup", name,
 			"-n", namespace,
-			"-o", "jsonpath={.status.conditions[?(@.type=='ReferencesValid')].reason}")
+			"-o", fmt.Sprintf("jsonpath={.status.conditions[?(@.type=='%s')].reason}", condition))
 		output, err := utils.Run(cmd)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(output).To(Equal(expectedReason), fmt.Sprintf("AnsibleGroup Ready status reason is not %s", expectedReason))
+		g.Expect(output).To(Equal(reason), fmt.Sprintf("AnsibleGroup %s status reason is not %s", condition, reason))
 	}, 3*time.Minute, time.Second).Should(Succeed())
 }
-func readyStatusOnAnsibleGroupShouldContain(name, namespace, expectedStatus string) {
+
+func ansibleGroupConditionMessageShouldContain(name, namespace, condition, expectedSubstring string) {
 	GinkgoHelper()
 	Eventually(func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", "ansiblegroup", name,
 			"-n", namespace,
-			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].message}")
+			"-o", fmt.Sprintf("jsonpath={.status.conditions[?(@.type=='%s')].message}", condition))
 		output, err := utils.Run(cmd)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(output).To(ContainSubstring(expectedStatus), fmt.Sprintf("AnsibleGroup Ready status does not contain %s", expectedStatus))
-	}, 3*time.Minute, time.Second).Should(Succeed())
-}
-func readyStatusOnAnsibleGroupShouldHaveReason(name, namespace, expectedReason string) {
-	GinkgoHelper()
-	Eventually(func(g Gomega) {
-		cmd := exec.Command("kubectl", "get", "ansiblegroup", name,
-			"-n", namespace,
-			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].reason}")
-		output, err := utils.Run(cmd)
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(output).To(Equal(expectedReason), fmt.Sprintf("AnsibleGroup Ready status reason is not %s", expectedReason))
+		g.Expect(output).To(ContainSubstring(expectedSubstring), fmt.Sprintf("AnsibleGroup %s status message does not contain %s", condition, expectedSubstring))
 	}, 3*time.Minute, time.Second).Should(Succeed())
 }
 
@@ -294,12 +288,12 @@ func waitForAnsibleGroupReady(name, namespace string) {
 
 func waitForAnsibleGroupNotReady(name, namespace string) {
 	GinkgoHelper()
-	Consistently(func(g Gomega) {
+	Eventually(func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", "ansiblegroup", name,
 			"-n", namespace,
 			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
 		output, err := utils.Run(cmd)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(output).To(Equal("True"), "AnsibleGroup not not ready")
-	}, 30*time.Second, time.Second).ShouldNot(Succeed())
+		g.Expect(output).To(Equal("False"), "AnsibleGroup not not ready")
+	}, 3*time.Minute, time.Second).Should(Succeed())
 }

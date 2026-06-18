@@ -23,6 +23,7 @@ import (
 
 const (
 	AnsibleGroupConditionReady           = "Ready"
+	AnsibleGroupConditionHealthy         = "Healthy"
 	AnsibleGroupConditionReferencesValid = "ReferencesValid"
 )
 
