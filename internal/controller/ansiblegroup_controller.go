@@ -155,7 +155,7 @@ func (r *AnsibleGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
 	}
 
-	return ctrl.Result{}, fmt.Errorf("one or more references are invalid or unhealthy: %s %s", invalidReferenceStringBuilder.String(), unhealthyMessageStringBuilder.String())
+	return ctrl.Result{}, nil
 }
 
 func objectReferenceListToString(refs []v1.LocalObjectReference) string {
