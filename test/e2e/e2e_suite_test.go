@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -49,7 +50,9 @@ const (
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
 	_, _ = fmt.Fprintf(GinkgoWriter, "Starting ansible-operator e2e test suite\n")
-	RunSpecs(t, "e2e suite")
+	suiteConfig, reporterConfig := GinkgoConfiguration()
+	suiteConfig.Timeout = 30 * time.Minute
+	RunSpecs(t, "e2e suite", reporterConfig, suiteConfig)
 }
 
 var _ = BeforeSuite(func() {

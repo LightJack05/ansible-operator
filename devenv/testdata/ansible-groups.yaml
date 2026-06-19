@@ -1,0 +1,114 @@
+---
+# group-web-tier: healthy leaf group.
+# References existing, healthy hosts and has no subgroups, so it should reach
+# Ready=True / ReferencesValid=True.
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleGroup
+metadata:
+  name: group-web-tier
+  namespace: ansible-operator-system
+spec:
+  ansibleName: web_tier
+  hosts:
+    - name: ssh-node-1
+    - name: ssh-node-2
+  groups: []
+  groupVars: |
+    http_port: 80
+    max_clients: 200
+---
+# group-databases: healthy leaf group.
+# Single existing host, no subgroups. Used below as a subgroup of a parent.
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleGroup
+metadata:
+  name: group-databases
+  namespace: ansible-operator-system
+spec:
+  ansibleName: databases
+  hosts:
+    - name: ssh-node-3
+  groups: []
+  groupVars: |
+    db_engine: postgres
+---
+# group-production: nested parent group.
+# No direct hosts; aggregates the two healthy leaf groups above. Should be
+# Ready/ReferencesValid only once both subgroups are themselves Ready.
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleGroup
+metadata:
+  name: group-production
+  namespace: ansible-operator-system
+spec:
+  ansibleName: production
+  hosts: []
+  groups:
+    - name: group-web-tier
+    - name: group-databases
+  groupVars: |
+    environment: production
+---
+# group-all: deeper nesting (grandparent).
+# References the nested parent above plus a direct host, to exercise mixed
+# host + subgroup membership across multiple levels.
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleGroup
+metadata:
+  name: group-all
+  namespace: ansible-operator-system
+spec:
+  ansibleName: all_managed
+  hosts:
+    - name: ssh-node-1
+  groups:
+    - name: group-production
+  groupVars: ""
+---
+# group-missing-host: ERROR STATE (invalid references).
+# ssh-node-99 does not exist, so the reconciler reports a missing host and sets
+# ReferencesValid=False / Ready=False with reason "InvalidReferences".
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleGroup
+metadata:
+  name: group-missing-host
+  namespace: ansible-operator-system
+spec:
+  ansibleName: broken_hosts
+  hosts:
+    - name: ssh-node-1
+    - name: ssh-node-99
+  groups: []
+  groupVars: |
+    note: references a host that does not exist
+---
+# group-missing-subgroup: ERROR STATE (invalid references).
+# nonexistent-subgroup does not exist, so the reconciler reports a missing
+# subgroup and sets ReferencesValid=False / Ready=False.
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleGroup
+metadata:
+  name: group-missing-subgroup
+  namespace: ansible-operator-system
+spec:
+  ansibleName: broken_subgroups
+  hosts:
+    - name: ssh-node-2
+  groups:
+    - name: nonexistent-subgroup
+  groupVars: |
+    note: references a subgroup that does not exist
+---
+# broken master group
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleGroup
+metadata:
+  name: group-missing-umbrella-group
+  namespace: ansible-operator-system
+spec:
+  ansibleName: broken_subgroups
+  hosts: []
+  groups:
+    - name: group-missing-subgroup
+  groupVars: |
+    note: references a subgroup that does not exist
