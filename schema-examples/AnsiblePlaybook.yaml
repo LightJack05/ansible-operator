@@ -45,32 +45,6 @@ spec:
     repo:
       url: https://example.com/repo.git
       ref: main
-    # Path to the playbook within the repo
+    # Path to the playbook and requirements.yml within the repo
     playbook_path: path/to/playbook.yaml
-    requirements_path: path/to/requirements.yaml
-    # Optional auth parameters for private repos
-    auth:
-      username_password:
-        credential_secret_ref:
-          name: git-credential-secret
-          username_key: username # default
-          password_key: password # default
----
-apiVersion: ansible-operator.lightjack.de
-kind: AnsiblePlaybook
-metadata:
-  name: ssh-git-playbook
-  namespace: default
-spec:
-  # Git playbook example with ssh auth
-  git:
-    repo:
-      url: git@example.com:repo.git
-      ref: main
-    playbook_path: path/to/playbook.yaml
-    requirements_path: path/to/requirements.yaml
-    auth:
-      ssh_key:
-        credential_secret_ref:
-          name: git-ssh-credential-secret
-          ssh_key_key: ssh_privatekey # default
+    requirements_path: path/to/requirements.yml

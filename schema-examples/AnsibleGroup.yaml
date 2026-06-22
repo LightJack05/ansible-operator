@@ -6,12 +6,12 @@ metadata:
   name: foo
   namespace: default
 spec:
-  ansibleName: foo # default to metadata.name if not set
+  ansibleName: foo # required
   hosts:
     # List of AnsibleHost refs in the same namespace
     - name: baz
-  subgroups:
-    # List of AnsibleGroup refs in the same namespace
+  groups:
+    # List of AnsibleGroup refs in the same namespace (subgroups)
     - name: bar
   groupVars: |
-    arbitrary string value that will be inserted into the host's vars block
+    arbitrary string value that will be inserted into the group's vars block

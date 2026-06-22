@@ -21,8 +21,8 @@ spec:
     ignoreHostKey: false # default
     sshKeySecretRef: # required
       name: foobar-creds # required
-    sshHostKeySecretRef:
-      name: foobar-host-key
+    sshHostKeySecretRef: # required
+      name: foobar-host-key # required
   privilege:
     become: false # default
   # TODO: Once no longer scope limited, maybe parse this as a map.
