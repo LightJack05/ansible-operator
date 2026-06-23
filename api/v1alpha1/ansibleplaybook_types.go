@@ -50,15 +50,20 @@ type AnsiblePlaybookGit struct {
 // AnsiblePlaybookInline specifies the Ansible playbook and requirements file as inline strings. Mutually exclusive with the Git field.
 // +optional
 type AnsiblePlaybookInline struct {
+	// Requirements is the content of the Ansible requirements.yml file as a string
+	// +optional
 	Requirements string `json:"requirements"`
-	Playbook     string `json:"playbook"`
+	// Playbook is the content of the Ansible playbook file as a string
+	Playbook string `json:"playbook"`
 }
 
 // AnsiblePlaybookRepo specifies the Git repository URL and reference (branch, tag, or commit).
 type AnsiblePlaybookRepo struct {
 	// URL is the Git repository URL
-	URL string `json:"url,omitempty"`
-	// Ref is the Git reference (branch, tag, or commit) to use
+	// +required
+	URL string `json:"url"`
+	// Ref is the Git reference (branch, tag, or commit) to use, default 'main'
+	// +kubebuilder:default:=main
 	Ref string `json:"ref,omitempty"`
 }
 
