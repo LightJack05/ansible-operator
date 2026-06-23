@@ -32,9 +32,9 @@ type AnsiblePlaybookSpec struct {
 	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
 
 	// +optional
-	Inline AnsiblePlaybookInline `json:"inline,omitempty"`
+	Inline *AnsiblePlaybookInline `json:"inline,omitempty"`
 	// +optional
-	Git AnsiblePlaybookGit `json:"git,omitempty"`
+	Git *AnsiblePlaybookGit `json:"git,omitempty"`
 }
 
 // AnsiblePlaybookGit specifies the Git repository containing the Ansible playbook and requirements file. Mutually exclusive with the Inline field.
