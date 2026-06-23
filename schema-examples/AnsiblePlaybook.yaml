@@ -2,7 +2,7 @@
 # Playbook may be inlined or pulled from git
 #
 # --- Playbook Source ---
-# NOTE: spec.inline.playbook and spec.git are mutually exclusive, and at least one must be set.
+# NOTE: spec.inline and spec.git are mutually exclusive, and at least one must be set.
 #
 # --- Authentication for sources ---
 # Git sources may use SSH key or username/password auth, and the credentials are expected to be in a secret in the same namespace as the playbook.
