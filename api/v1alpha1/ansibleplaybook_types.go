@@ -24,7 +24,7 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // AnsiblePlaybookSpec defines the desired state of AnsiblePlaybook
-// +kubebuilder:validation:XValidation:rule="!(has(self.inline) && has(self.git))",message="Inline and Git are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="has(self.inline) != has(self.git)",message="Inline and Git are mutually exclusive"
 type AnsiblePlaybookSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
