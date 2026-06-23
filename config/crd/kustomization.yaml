@@ -4,6 +4,7 @@
 resources:
 - bases/ansible-operator.lightjack.de_ansiblehosts.yaml
 - bases/ansible-operator.lightjack.de_ansiblegroups.yaml
+- bases/ansible-operator.lightjack.de_ansibleplaybooks.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:
