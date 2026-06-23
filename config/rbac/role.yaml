@@ -21,6 +21,7 @@ rules:
   - ansiblegroups
   - ansiblehosts
   - ansibleplaybooks
+  - ansiblereconcilejobs
   verbs:
   - create
   - delete
@@ -35,6 +36,7 @@ rules:
   - ansiblegroups/finalizers
   - ansiblehosts/finalizers
   - ansibleplaybooks/finalizers
+  - ansiblereconcilejobs/finalizers
   verbs:
   - update
 - apiGroups:
@@ -43,6 +45,7 @@ rules:
   - ansiblegroups/status
   - ansiblehosts/status
   - ansibleplaybooks/status
+  - ansiblereconcilejobs/status
   verbs:
   - get
   - patch

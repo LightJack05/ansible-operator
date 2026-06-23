@@ -40,4 +40,13 @@ resources:
   kind: AnsiblePlaybook
   path: github.com/LightJack05/ansible-operator/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: lightjack.de
+  group: ansible-operator
+  kind: AnsibleReconcileJob
+  path: github.com/LightJack05/ansible-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

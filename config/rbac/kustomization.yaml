@@ -22,6 +22,9 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the ansible-operator itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- ansiblereconcilejob_admin_role.yaml
+- ansiblereconcilejob_editor_role.yaml
+- ansiblereconcilejob_viewer_role.yaml
 - ansibleplaybook_admin_role.yaml
 - ansibleplaybook_editor_role.yaml
 - ansibleplaybook_viewer_role.yaml

@@ -3,4 +3,5 @@ resources:
 - ansible-operator_v1alpha1_ansiblehost.yaml
 - ansible-operator_v1alpha1_ansiblegroup.yaml
 - ansible-operator_v1alpha1_ansibleplaybook.yaml
+- ansible-operator_v1alpha1_ansiblereconcilejob.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
