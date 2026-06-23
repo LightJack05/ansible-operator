@@ -20,6 +20,7 @@ rules:
   resources:
   - ansiblegroups
   - ansiblehosts
+  - ansibleplaybooks
   verbs:
   - create
   - delete
@@ -33,6 +34,7 @@ rules:
   resources:
   - ansiblegroups/finalizers
   - ansiblehosts/finalizers
+  - ansibleplaybooks/finalizers
   verbs:
   - update
 - apiGroups:
@@ -40,6 +42,7 @@ rules:
   resources:
   - ansiblegroups/status
   - ansiblehosts/status
+  - ansibleplaybooks/status
   verbs:
   - get
   - patch

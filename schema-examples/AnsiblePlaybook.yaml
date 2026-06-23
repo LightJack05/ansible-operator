@@ -46,5 +46,5 @@ spec:
       url: https://example.com/repo.git
       ref: main
     # Path to the playbook and requirements.yml within the repo
-    playbook_path: path/to/playbook.yaml
-    requirements_path: path/to/requirements.yml
+    playbookPath: path/to/playbook.yaml
+    requirementsPath: path/to/requirements.yml
