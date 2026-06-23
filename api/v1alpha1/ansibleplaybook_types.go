@@ -34,7 +34,7 @@ type AnsiblePlaybookSpec struct {
 	// +optional
 	Inline AnsiblePlaybookInline `json:"inline"`
 	// +optional
-	Git    AnsiblePlaybookGit    `json:"git"`
+	Git AnsiblePlaybookGit `json:"git"`
 }
 
 // AnsiblePlaybookGit specifies the Git repository containing the Ansible playbook and requirements file. Mutually exclusive with the Inline field.
