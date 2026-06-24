@@ -87,12 +87,12 @@ func (r *AnsibleReconcileJobReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 func (r *AnsibleReconcileJobReconciler) ensureInventoryConfigmap(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
-	hostMap, err := r.getAnsibleHostsInNamespace(ctx, "default")
+	hostMap, err := r.getAnsibleHostsInNamespace(ctx, reconcileJob.Namespace)
 	if err != nil {
 		return fmt.Errorf("failed to get AnsibleHosts: %w", err)
 	}
 
-	groupMap, err := r.getAnsibleGroupsInNamespace(ctx, "default")
+	groupMap, err := r.getAnsibleGroupsInNamespace(ctx, reconcileJob.Namespace)
 	if err != nil {
 		return fmt.Errorf("failed to get AnsibleGroups: %w", err)
 	}
