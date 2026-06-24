@@ -59,7 +59,7 @@ type AnsibleHostConnection struct {
 	// +kubebuilder:default=22
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
-	Port int32 `json:"port,omitempty"`
+	Port uint16 `json:"port,omitempty"`
 
 	// user is the SSH login user.
 	// +optional
