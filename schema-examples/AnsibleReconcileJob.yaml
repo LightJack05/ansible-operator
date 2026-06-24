@@ -12,14 +12,14 @@
 #   - It also needs to match the ssh keys mounted to be used correctly by the correct hosts
 #   - The reconcile job will also build a configmap for the ssh config to match ssh keys mounted to the correct hosts, and mount it to the pod
 
-apiVersion: ansible-operator.lightjack.de
+apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsibleReconcileJob
 metadata:
+  namespace: ansible-operator-system
   name: example-reconcile-job
-  namespace: default
 spec:
   schedule: "0 0 * * *"
-  playbook_ref:
+  playbookRef:
     # ref to a playbook in the same namespace
     # host selection is handled via the inventory, and the group referenced in the playbook
     name: some-playbook
