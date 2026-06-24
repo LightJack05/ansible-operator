@@ -5,6 +5,7 @@ metadata:
   name: ssh-node-1
   namespace: ansible-operator-system
 spec:
+  ansibleName: ssh-node-1
   connection:
     host: ssh-node-1.default.svc.cluster.local
     user: ansible
@@ -23,6 +24,7 @@ metadata:
   name: ssh-node-2
   namespace: ansible-operator-system
 spec:
+  ansibleName: ssh-node-2
   connection:
     host: ssh-node-2.default.svc.cluster.local
     user: ansible
@@ -41,6 +43,7 @@ metadata:
   name: ssh-node-3
   namespace: ansible-operator-system
 spec:
+  ansibleName: ssh-node-3
   connection:
     host: ssh-node-3.default.svc.cluster.local
     user: ansible

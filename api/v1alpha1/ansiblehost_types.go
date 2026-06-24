@@ -23,11 +23,11 @@ import (
 
 // AnsibleHostSpec defines the desired state of AnsibleHost
 type AnsibleHostSpec struct {
-	// ansibleName is the name used in the Ansible inventory. Defaults to metadata.name.
-	// +optional
+	// ansibleName is the name used in the Ansible inventory.
+	// +required
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9_.-]+$`
 	// +kubebuilder:validation:MaxLength=253
-	AnsibleName string `json:"ansibleName,omitempty"`
+	AnsibleName string `json:"ansibleName"`
 
 	// connection defines SSH connection parameters for this host.
 	// +required

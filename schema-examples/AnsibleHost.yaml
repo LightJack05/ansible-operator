@@ -9,7 +9,7 @@ metadata:
   name: foobar
   namespace: default
 spec:
-  ansibleName: foobar # default to metadata.name if not set
+  ansibleName: foobar # required
   # TODO: Once no longer scope limited, add further vars here as per ansible docs
   connection:
     host: ssh-server-1.default.svc.cluster.local # required

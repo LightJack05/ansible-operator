@@ -41,7 +41,6 @@ spec:
             properties:
               ansibleName:
                 description: ansibleName is the name used in the Ansible inventory.
-                  Defaults to metadata.name.
                 maxLength: 253
                 pattern: ^[a-zA-Z0-9_.-]+$
                 type: string
@@ -131,6 +130,7 @@ spec:
                 - sshKeySecretRef
                 type: object
             required:
+            - ansibleName
             - connection
             - ssh
             type: object
