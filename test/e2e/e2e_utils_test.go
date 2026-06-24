@@ -94,6 +94,7 @@ metadata:
   name: %[1]s 
   namespace: %[3]s 
 spec:
+  ansibleName: %[1]s
   connection:
     host: %[2]s
     port: %[7]d
