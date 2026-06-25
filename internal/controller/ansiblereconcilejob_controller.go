@@ -80,10 +80,64 @@ func (r *AnsibleReconcileJobReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	// ... the known hosts configmap exists
+	if err := r.ensureKnownHostsSecretExists(ctx, reconcileJob); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to ensure known hosts configmap: %w", err)
+	}
 	// ... the configuration configmap exists with all necessary keys
 	// ... the cronjob exists and mounts all required files
 
 	return ctrl.Result{}, nil
+}
+
+func (r *AnsibleReconcileJobReconciler) ensureKnownHostsSecretExists(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
+	hosts := &ansibleoperatorv1alpha1.AnsibleHostList{}
+	if err := r.List(ctx, hosts, client.InNamespace(reconcileJob.Namespace)); err != nil {
+		return fmt.Errorf("failed to list AnsibleHosts in namespace %s: %w", reconcileJob.Namespace, err)
+	}
+	knownHosts, err := r.getKnownHostsForReconcileJob(ctx, hosts.Items)
+	if err != nil {
+		return fmt.Errorf("failed to get known hosts for reconcile job %s/%s: %w", reconcileJob.Namespace, reconcileJob.Name, err)
+	}
+	knownHostsString := strings.Join(knownHosts, "\n")
+	err = r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+"-known-hosts", "known_hosts", knownHostsString, reconcileJob)
+	if err != nil {
+		return fmt.Errorf("failed to ensure known hosts configmap: %w", err)
+	}
+	return nil
+}
+
+func (r *AnsibleReconcileJobReconciler) getKnownHostsSecretForHost(ctx context.Context, host ansibleoperatorv1alpha1.AnsibleHost) (hostKeys string, err error) {
+	secretName := host.Spec.SSH.SSHHostKeySecretRef.Name
+	secretNamespace := host.Namespace
+
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Name: secretName, Namespace: secretNamespace}, secret); err != nil {
+		if errors.IsNotFound(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to get secret %s/%s for host %s/%s: %w", secretNamespace, secretName, host.Namespace, host.Name, err)
+	}
+	secretValue, ok := secret.Data["host_keys"]
+	if !ok {
+		return "", fmt.Errorf("secret %s/%s for host %s/%s does not contain 'host_keys' key", secretNamespace, secretName, host.Namespace, host.Name)
+	}
+	return string(secretValue), nil
+}
+
+func (r *AnsibleReconcileJobReconciler) getKnownHostsForReconcileJob(ctx context.Context, hosts []ansibleoperatorv1alpha1.AnsibleHost) ([]string, error) {
+	secrets := make([]string, 0, len(hosts))
+	for _, host := range hosts {
+		secret, err := r.getKnownHostsSecretForHost(ctx, host)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get known hosts secret for host %s/%s: %w", host.Namespace, host.Name, err)
+		}
+		if secret == "" {
+			logf.FromContext(ctx).Info(fmt.Sprintf("WARNING: skipping host %s/%s in known host key file since it does not have a know hosts secret", host.Namespace, host.Name))
+			continue
+		}
+		secrets = append(secrets, secret)
+	}
+	return secrets, nil
 }
 
 func (r *AnsibleReconcileJobReconciler) ensureInventoryConfigmap(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
