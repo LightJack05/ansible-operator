@@ -106,7 +106,7 @@ func (r *AnsibleReconcileJobReconciler) ensureKnownHostsSecretExists(ctx context
 	return nil
 }
 
-func (r *AnsibleReconcileJobReconciler) getKnownHostsSecretForHost(ctx context.Context, host ansibleoperatorv1alpha1.AnsibleHost) (hostKeys string, err error) {
+func (r *AnsibleReconcileJobReconciler) getKnownHostsLinesForHost(ctx context.Context, host ansibleoperatorv1alpha1.AnsibleHost) (hostKeys string, err error) {
 	secretName := host.Spec.SSH.SSHHostKeySecretRef.Name
 	secretNamespace := host.Namespace
 
@@ -121,13 +121,20 @@ func (r *AnsibleReconcileJobReconciler) getKnownHostsSecretForHost(ctx context.C
 	if !ok {
 		return "", fmt.Errorf("secret %s/%s for host %s/%s does not contain 'host_keys' key", secretNamespace, secretName, host.Namespace, host.Name)
 	}
-	return string(secretValue), nil
+	// Prepend the hostname of the ansible host to each line in the ssh known hosts keys
+	for line := range strings.SplitSeq(string(secretValue), "\n") {
+		if line == "" {
+			continue
+		}
+		hostKeys += fmt.Sprintf("%s %s\n", host.Spec.Connection.Host, line)
+	}
+	return hostKeys, nil
 }
 
 func (r *AnsibleReconcileJobReconciler) getKnownHostsForReconcileJob(ctx context.Context, hosts []ansibleoperatorv1alpha1.AnsibleHost) ([]string, error) {
 	secrets := make([]string, 0, len(hosts))
 	for _, host := range hosts {
-		secret, err := r.getKnownHostsSecretForHost(ctx, host)
+		secret, err := r.getKnownHostsLinesForHost(ctx, host)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get known hosts secret for host %s/%s: %w", host.Namespace, host.Name, err)
 		}
