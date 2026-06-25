@@ -1,0 +1,11 @@
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleReconcileJob
+metadata:
+  name: example-reconcile-job
+  namespace: demo
+spec:
+  schedule: "0 0 * * *"
+  playbookRef:
+    # ref to a playbook in the same namespace
+    # host selection is handled via the inventory, and the group referenced in the playbook
+    name: some-playbook

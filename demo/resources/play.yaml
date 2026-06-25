@@ -1,0 +1,17 @@
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsiblePlaybook
+metadata:
+  name: inline-playbook
+  namespace: demo
+spec:
+  # Direct inline playbook example
+  inline:
+    requirements: |
+      - name: ansible.builtin
+        version: 1.0.0
+    playbook: |
+      - name: Example Playbook
+        hosts: all
+        tasks:
+          - name: Ping
+            ansible.builtin.ping:

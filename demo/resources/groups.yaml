@@ -1,0 +1,50 @@
+---
+# group-web-tier: healthy leaf group.
+# References existing, healthy hosts and has no subgroups, so it should reach
+# Ready=True / ReferencesValid=True.
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleGroup
+metadata:
+  name: group-web-tier
+  namespace: demo
+spec:
+  ansibleName: web_tier
+  hosts:
+    - name: ssh-node-1
+    - name: ssh-node-2
+  groups: []
+  groupVars: |
+    http_port: 80
+    max_clients: 200
+---
+# group-databases: healthy leaf group.
+# Single existing host, no subgroups. Used below as a subgroup of a parent.
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleGroup
+metadata:
+  name: group-databases
+  namespace: demo
+spec:
+  ansibleName: databases
+  hosts:
+    - name: ssh-node-3
+  groups: []
+  groupVars: |
+    db_engine: postgres
+---
+# group-production: nested parent group.
+# No direct hosts; aggregates the two healthy leaf groups above. Should be
+# Ready/ReferencesValid only once both subgroups are themselves Ready.
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleGroup
+metadata:
+  name: group-production
+  namespace: demo
+spec:
+  ansibleName: production
+  hosts: []
+  groups:
+    - name: group-web-tier
+    - name: group-databases
+  groupVars: |
+    environment: production
