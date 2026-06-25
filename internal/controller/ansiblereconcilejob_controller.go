@@ -121,7 +121,7 @@ func (r *AnsibleReconcileJobReconciler) ensureConfigmapWithKeyValue(ctx context.
 			}
 		}
 		// Check if we own the configmap, if not, return an error
-		if !isConfigmapOwnedByAnsibleReconcileJob(&cm, &ansibleoperatorv1alpha1.AnsibleReconcileJob{}) {
+		if !isConfigmapOwnedByAnsibleReconcileJob(&cm, &ansibleReconcileJob) {
 			return fmt.Errorf("configmap %s exists but is not owned by AnsibleReconcileJob", name)
 		}
 
