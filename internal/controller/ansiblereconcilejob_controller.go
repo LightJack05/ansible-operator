@@ -75,22 +75,26 @@ func (r *AnsibleReconcileJobReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	// Ensure...
 	// ... the inventory configmap exists
-	if err := r.ensureInventoryConfigmap(ctx, reconcileJob); err != nil {
+	err = r.ensureInventoryConfigmap(ctx, reconcileJob)
+	if err != nil {
 		err = fmt.Errorf("failed to ensure inventory configmap: %w", err)
 		goto err
 	}
 	// ... the known hosts configmap exists
-	if err := r.ensureKnownHostsSecretExists(ctx, reconcileJob); err != nil {
+	err = r.ensureKnownHostsSecretExists(ctx, reconcileJob)
+	if err != nil {
 		err = fmt.Errorf("failed to ensure known hosts configmap: %w", err)
 		goto err
 	}
 	// ... the configuration configmap exists with all necessary keys
-	if err := r.ensureRuntimeConfigMap(ctx, reconcileJob); err != nil {
+	err = r.ensureRuntimeConfigMap(ctx, reconcileJob)
+	if err != nil {
 		err = fmt.Errorf("failed to ensure runtime configmap: %w", err)
 		goto err
 	}
 	// ... the cronjob exists and mounts all required files
-	if err := r.ensureCronJobExists(ctx, reconcileJob); err != nil {
+	err = r.ensureCronJobExists(ctx, reconcileJob)
+	if err != nil {
 		err = fmt.Errorf("failed to ensure cronjob exists: %w", err)
 		goto err
 	}
@@ -99,7 +103,7 @@ func (r *AnsibleReconcileJobReconciler) Reconcile(ctx context.Context, req ctrl.
 err:
 	handleError := r.handleReconcileError(ctx, reconcileJob)
 	if handleError != nil {
-		return ctrl.Result{}, fmt.Errorf("error encountered during reconcile: %w; additionally, failed to handle error: %v", err, handleError)
+		return ctrl.Result{}, fmt.Errorf("error encountered during reconcile: %w; additionally, failed to handle error: %w", err, handleError)
 	}
 	return ctrl.Result{}, fmt.Errorf("error encountered during reconcile: %w", err)
 }
