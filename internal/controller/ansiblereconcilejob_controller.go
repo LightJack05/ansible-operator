@@ -57,7 +57,7 @@ type AnsibleReconcileJobReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.3/pkg/reconcile
-func (r *AnsibleReconcileJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *AnsibleReconcileJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	lg := logf.FromContext(ctx)
 	lg.Info("Reconciling AnsibleReconcileJob", "namespace", req.Namespace, "name", req.Name)
 
@@ -70,23 +70,53 @@ func (r *AnsibleReconcileJobReconciler) Reconcile(ctx context.Context, req ctrl.
 			return ctrl.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get AnsibleReconcileJob: %w", err)
 	}
 
 	// Ensure...
 	// ... the inventory configmap exists
 	if err := r.ensureInventoryConfigmap(ctx, reconcileJob); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to ensure inventory configmap: %w", err)
+		err = fmt.Errorf("failed to ensure inventory configmap: %w", err)
+		goto err
 	}
-
 	// ... the known hosts configmap exists
 	if err := r.ensureKnownHostsSecretExists(ctx, reconcileJob); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to ensure known hosts configmap: %w", err)
+		err = fmt.Errorf("failed to ensure known hosts configmap: %w", err)
+		goto err
 	}
 	// ... the configuration configmap exists with all necessary keys
+	if err := r.ensureRuntimeConfigMap(ctx, reconcileJob); err != nil {
+		err = fmt.Errorf("failed to ensure runtime configmap: %w", err)
+		goto err
+	}
 	// ... the cronjob exists and mounts all required files
+	if err := r.ensureCronJobExists(ctx, reconcileJob); err != nil {
+		err = fmt.Errorf("failed to ensure cronjob exists: %w", err)
+		goto err
+	}
 
 	return ctrl.Result{}, nil
+err:
+	handleError := r.handleReconcileError(ctx, reconcileJob)
+	if handleError != nil {
+		return ctrl.Result{}, fmt.Errorf("error encountered during reconcile: %w; additionally, failed to handle error: %v", err, handleError)
+	}
+	return ctrl.Result{}, fmt.Errorf("error encountered during reconcile: %w", err)
+}
+
+func (r *AnsibleReconcileJobReconciler) handleReconcileError(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
+	// TODO: Disable the cronjob and set the resource into error state
+	return nil
+}
+
+func (r *AnsibleReconcileJobReconciler) ensureRuntimeConfigMap(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
+	// TODO: Ensure the runtime configmap exists with all necessary keys
+	return nil
+}
+
+func (r *AnsibleReconcileJobReconciler) ensureCronJobExists(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
+	// TODO: Ensure the cronjob exists and mounts all required files
+	return nil
 }
 
 func (r *AnsibleReconcileJobReconciler) ensureKnownHostsSecretExists(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
