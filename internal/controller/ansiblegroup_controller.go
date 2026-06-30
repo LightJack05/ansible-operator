@@ -51,6 +51,7 @@ type groupHealthcheckResult struct {
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblegroups,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblegroups/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblegroups/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -84,6 +85,15 @@ func (r *AnsibleGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	if err := r.defaultStatusToUnknown(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+	}
+
+	// Create the group vars ConfigMap if it doesn't exist or update it if it does
+	if err := r.ensureVarsConfigMap(ctx, &group, group.Spec.GroupVars); err != nil {
+		if err := r.setCondition(ctx, &group, ansibleoperatorv1alpha1.AnsibleGroupConditionReady, metav1.ConditionFalse, "Error", fmt.Sprintf("Failed to ensure vars ConfigMap: %v", err)); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+		}
+		lg.Error(err, "Failed to ensure vars ConfigMap")
+		return ctrl.Result{}, err
 	}
 
 	// Check the health of the group by verifying the existence and health of referenced hosts and subgroups
@@ -156,6 +166,49 @@ func (r *AnsibleGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *AnsibleGroupReconciler) ensureVarsConfigMap(ctx context.Context, group *ansibleoperatorv1alpha1.AnsibleGroup, vars string) error {
+	cm := &v1.ConfigMap{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: group.Namespace, Name: group.Name + `-vars`}, cm); err != nil {
+		if errors.IsNotFound(err) {
+			// Create the ConfigMap if it doesn't exist
+			cm = &v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      group.Name + `-vars`,
+					Namespace: group.Namespace,
+				},
+				Data: map[string]string{
+					"vars": vars,
+				},
+			}
+			if err := ctrl.SetControllerReference(group, cm, r.Scheme); err != nil {
+				return fmt.Errorf("failed to set owner reference for ConfigMap: %w", err)
+			}
+			if err := r.Create(ctx, cm); err != nil {
+				return fmt.Errorf("failed to create ConfigMap for AnsibleGroup vars: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to get ConfigMap for AnsibleGroup vars: %w", err)
+		}
+	}
+
+	// Check the owner reference and update the vars if it is owned by the AnsibleGroup
+	if metav1.IsControlledBy(cm, group) {
+		if cm.Data == nil {
+			cm.Data = make(map[string]string)
+		}
+		if cm.Data["vars"] != vars {
+			cm.Data["vars"] = vars
+			if err := r.Update(ctx, cm); err != nil {
+				return fmt.Errorf("failed to update ConfigMap for AnsibleGroup vars: %w", err)
+			}
+		}
+	} else {
+		return fmt.Errorf("ConfigMap %s is not owned by AnsibleGroup %s", cm.Name, group.Name)
+	}
+
+	return nil
 }
 
 func objectReferenceListToString(refs []v1.LocalObjectReference) string {
@@ -279,6 +332,7 @@ func (r *AnsibleGroupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ansibleoperatorv1alpha1.AnsibleGroup{}).
 		Named("ansiblegroup").
+		Owns(&v1.ConfigMap{}).
 		Watches(&ansibleoperatorv1alpha1.AnsibleHost{}, handler.EnqueueRequestsFromMapFunc(r.requestsForHostChange)).
 		Watches(&ansibleoperatorv1alpha1.AnsibleGroup{}, handler.EnqueueRequestsFromMapFunc(r.requestsForGroupChange)).
 		Complete(r)

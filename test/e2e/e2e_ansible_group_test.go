@@ -116,6 +116,26 @@ func AnsibleGroupTests() {
 				By("waiting for the AnsibleGroup to become ready")
 				waitForAnsibleGroupReady("valid-ansible-group", testResourceNamespace)
 			})
+			It("should create the configmap populated with the required vars", func() {
+				By("Creating an ansible group")
+				createAnsibleGroup(
+					"valid-ansible-group",
+					testResourceNamespace,
+					"foobar",
+					[]string{"ansible-host-0", "ansible-host-1", "ansible-host-2"},
+					make([]string, 0),
+				)
+				By("waiting for the AnsibleGroup to become ready")
+				waitForAnsibleGroupReady("valid-ansible-group", testResourceNamespace)
+				Eventually(func(g Gomega) {
+					cmd := exec.Command("kubectl", "get", "configmap", "valid-ansible-group-vars",
+						"-n", testResourceNamespace,
+						"-o", "jsonpath={.data.vars}")
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(ContainSubstring("foobar"))
+				}, 3*time.Minute, time.Second).Should(Succeed())
+			})
 			It("should become ready when only child groups are specified", func() {
 				By("Creating an ansible group that has the default group as a child")
 				createAnsibleGroup(
