@@ -75,6 +75,7 @@ func createValidAnsibleHost(name, namespace, hostname, username, privateKeySecre
 		namespace,
 		hostname,
 		username,
+		"",
 		privateKeySecretName,
 		hostKeySecretName,
 		port,
@@ -84,7 +85,24 @@ func createValidAnsibleHost(name, namespace, hostname, username, privateKeySecre
 	Expect(err).NotTo(HaveOccurred(), "Failed to create AnsibleHost")
 }
 
-func templateAnsibleHost(name, namespace, hostname, username, privateKeySecretName, hostKeySecretName string, port int, ignoreHostKeys bool) string {
+func createValidAnsibleHostWithVars(name, namespace, hostname, username, privateKeySecretName, hostKeySecretName, vars string, port int, ignoreHostKeys bool) {
+	GinkgoHelper()
+	applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+	applyCmd.Stdin = strings.NewReader(templateAnsibleHost(
+		name,
+		namespace,
+		hostname,
+		username,
+		vars,
+		privateKeySecretName,
+		hostKeySecretName,
+		port,
+		ignoreHostKeys,
+	))
+	_, err := utils.Run(applyCmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create AnsibleHost")
+}
+func templateAnsibleHost(name, namespace, hostname, username, hostVars, privateKeySecretName, hostKeySecretName string, port int, ignoreHostKeys bool) string {
 	return fmt.Sprintf(
 		`
 ---
@@ -107,9 +125,10 @@ spec:
     ignoreHostKey: %[8]v
   privilege:
     become: true
+  hostVars: %[9]s
 ---
 `,
-		name, hostname, namespace, username, privateKeySecretName, hostKeySecretName, port, ignoreHostKeys)
+		name, hostname, namespace, username, privateKeySecretName, hostKeySecretName, port, ignoreHostKeys, hostVars)
 }
 
 // serviceAccountToken returns a token for the specified service account in the given namespace.

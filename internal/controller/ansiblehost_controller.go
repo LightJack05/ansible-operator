@@ -46,6 +46,7 @@ type AnsibleHostReconciler struct {
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblehosts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblehosts/finalizers,verbs=update
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblehosts/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // Access for reading and writing the SSH keys
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;delete
 
@@ -110,6 +111,18 @@ func (r *AnsibleHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	// Ensure the host vars configmap exists
+	if err := r.ensureVarsConfigMap(ctx, &ansibleHost, ansibleHost.Spec.HostVars); err != nil {
+		// If there was an error ensuring the vars configmap exists, we can log the error and requeue the request
+		if err := r.setStatusNotReady(ctx, &ansibleHost, "VarsConfigMapError", fmt.Sprintf("Failed to ensure vars configmap exists: %v", err)); err != nil {
+			lg.Error(err, "AnsibleHost status update failed.")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+
+		lg.Error(err, "Vars configmap error.")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
 	// Set the host to ready once the result succeeds
 	if err := r.setStatusReady(ctx, &ansibleHost); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update AnsibleHost status: %w", err)
@@ -117,6 +130,48 @@ func (r *AnsibleHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
+func (r *AnsibleHostReconciler) ensureVarsConfigMap(ctx context.Context, host *ansibleoperatorv1alpha1.AnsibleHost, vars string) error {
+	cm := &corev1.ConfigMap{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: host.Namespace, Name: host.Name + `-vars`}, cm); err != nil {
+		if errors.IsNotFound(err) {
+			// Create the ConfigMap if it doesn't exist
+			cm = &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      host.Name + `-vars`,
+					Namespace: host.Namespace,
+				},
+				Data: map[string]string{
+					"vars": vars,
+				},
+			}
+			if err := ctrl.SetControllerReference(host, cm, r.Scheme); err != nil {
+				return fmt.Errorf("failed to set owner reference for ConfigMap: %w", err)
+			}
+			if err := r.Create(ctx, cm); err != nil {
+				return fmt.Errorf("failed to create ConfigMap for AnsibleHost vars: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to get ConfigMap for AnsibleHost vars: %w", err)
+		}
+	}
+
+	// Check the owner reference and update the vars if it is owned by the AnsibleHost
+	if metav1.IsControlledBy(cm, host) {
+		if cm.Data == nil {
+			cm.Data = make(map[string]string)
+		}
+		if cm.Data["vars"] != vars {
+			cm.Data["vars"] = vars
+			if err := r.Update(ctx, cm); err != nil {
+				return fmt.Errorf("failed to update ConfigMap for AnsibleHost vars: %w", err)
+			}
+		}
+	} else {
+		return fmt.Errorf("ConfigMap %s is not owned by AnsibleHost %s", cm.Name, host.Name)
+	}
+
+	return nil
+}
 func (r *AnsibleHostReconciler) hostPrivateKeySecretExists(ctx context.Context, ansibleHost *ansibleoperatorv1alpha1.AnsibleHost) (bool, error) {
 	secret := &corev1.Secret{}
 	err := r.Get(ctx, client.ObjectKey{Namespace: ansibleHost.Namespace, Name: ansibleHost.Spec.SSH.SSHKeySecretRef.Name}, secret)
@@ -237,6 +292,7 @@ func (r *AnsibleHostReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ansibleoperatorv1alpha1.AnsibleHost{}).
 		Owns(&corev1.Secret{}).
+		Owns(&corev1.ConfigMap{}).
 		Named("ansiblehost").
 		// Run at most 100 concurrent reconciles.
 		// The high number here is irrelevant, since the threads aren't CPU bound, but just blocked on network IO for the most time.
