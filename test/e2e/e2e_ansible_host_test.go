@@ -83,6 +83,55 @@ func AnsibleHostTests() {
 			deleteNamespace(sshNodeNamespace)
 		})
 
+		It("Should create the AnsibleHost ConfigMap populated with it's variables", func() {
+			By("Setting up 3 SSH hosts...")
+			setupSSHHosts(sshNodeNamespace)
+
+			By("Creating a test namespace and a valid AnsibleHost resource")
+			testNs := createRandomTestNamespace()
+
+			createSSHKeySecret(testNs, "ssh-node-0-credentials")
+
+			createValidAnsibleHostWithVars(
+				"valid-ansible-host",
+				testNs,
+				fmt.Sprintf("ssh-node-%d.%s.svc.cluster.local", 0, sshNodeNamespace),
+				"root",
+				"ssh-node-0-credentials",
+				"ssh-node-0-hostkey",
+				"foobarbaz",
+				22,
+				false,
+			)
+
+			By("waiting for the AnsibleHost to become ready")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "ansiblehost", "valid-ansible-host",
+					"-n", testNs,
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("True"), "AnsibleHost not ready")
+			}, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("waiting for the ansible host to create a ConfigMap with the variables")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "configmap", "valid-ansible-host-vars",
+					"-n", testNs,
+					"-o", "jsonpath={.data.vars}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("foobarbaz"), "AnsibleHost ConfigMap vars not correct")
+			}, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("cleaning up the test namespace")
+			deleteNamespace(testNs)
+
+			By("removing the existing SSH hosts again")
+			deleteNamespace(sshNodeNamespace)
+
+		})
+
 		It("Should become not ready when configured incorrectly, and not create a secret", func() {
 			By("Setting up 3 SSH hosts...")
 			setupSSHHosts(sshNodeNamespace)
