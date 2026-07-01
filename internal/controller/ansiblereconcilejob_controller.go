@@ -22,7 +22,9 @@ import (
 	"strings"
 	"text/template"
 
+	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -50,6 +52,37 @@ const (
 	runtimeConfigGitRequirementsPathKey = `OPERATOR_GIT_REQUIREMENTS_PATH`
 	runtimeConfigPlaybookYAMLKey        = `playbook.yml`
 	runtimeConfigRequirementsYAMLKey    = `requirements.yml`
+	inventoryConfigMapKey               = "inventory.yaml"
+	knownHostsConfigMapKey              = "known_hosts"
+)
+
+const (
+	ociImageJobInitContainer    = "ghcr.io/lightjack05/ansible-operator-runner-init:latest"
+	ociImageJobRuntimeContainer = "ghcr.io/lightjack05/ansible-operator-runner-runner:latest"
+)
+
+var (
+	emptyDirSizeLimit = resource.MustParse("10Gi")
+)
+
+const (
+	playbooksVolumeName     = "playbooks"
+	dependenciesVolumeName  = "deps"
+	inventoryVolumeName     = "inventory"
+	knownHostsVolumeName    = "knownhosts"
+	runtimeConfigVolumeName = "runtimeconfig"
+)
+
+const (
+	playbooksEmptyDirPath    = "/playbooks"
+	dependenciesEmptyDirPath = "/deps"
+)
+
+const (
+	inventoryHostsFileName = "hosts.yaml"
+	inventoryHostsFilePath = "/inventory/hosts.yaml"
+	knownHostsFileName     = "known_hosts"
+	knownHostsFilePath     = "/ssh/known_hosts"
 )
 
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblereconcilejobs,verbs=get;list;watch;create;update;patch;delete
@@ -119,6 +152,139 @@ err:
 	return ctrl.Result{}, fmt.Errorf("error encountered during reconcile: %w", err)
 }
 
+func (r *AnsibleReconcileJobReconciler) ensureCronJobExists(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
+	// TODO: Ensure the cronjob exists and mounts all required files
+	return nil
+}
+
+func (r *AnsibleReconcileJobReconciler) ensureCronjobWithMounts(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
+}
+
+func constructCronjobWithMounts(ctx context.Context, name, namespace, schedule string, runtimeConfigMapName, knownHostsConfigMapName, inventoryConfigMapName string, hostSSHKeyConfigMaps, hostVarsConfigMaps, groupVarsConfigMaps []string) (*batchv1.CronJob, error) {
+	cj := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: batchv1.CronJobSpec{
+			Schedule:          schedule,
+			ConcurrencyPolicy: batchv1.ForbidConcurrent,
+			JobTemplate: batchv1.JobTemplateSpec{
+				Spec: batchv1.JobSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							InitContainers: []corev1.Container{
+								{
+									Name:  "init",
+									Image: ociImageJobInitContainer,
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      playbooksVolumeName,
+											ReadOnly:  false,
+											MountPath: playbooksEmptyDirPath,
+										},
+										{
+											Name:      dependenciesVolumeName,
+											ReadOnly:  false,
+											MountPath: dependenciesEmptyDirPath,
+										},
+									},
+								},
+							},
+							Containers: []corev1.Container{
+								{
+									Name:  "runner",
+									Image: ociImageJobRuntimeContainer,
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      playbooksVolumeName,
+											ReadOnly:  true,
+											MountPath: playbooksEmptyDirPath,
+										},
+										{
+											Name:      dependenciesVolumeName,
+											ReadOnly:  true,
+											MountPath: dependenciesEmptyDirPath,
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: playbooksVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										EmptyDir: &corev1.EmptyDirVolumeSource{
+											SizeLimit: &emptyDirSizeLimit,
+										},
+									},
+								},
+								{
+									Name: dependenciesVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										EmptyDir: &corev1.EmptyDirVolumeSource{
+											SizeLimit: &emptyDirSizeLimit,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// inventory hosts.yaml
+	cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, corev1.Volume{
+		Name: inventoryVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: inventoryConfigMapName,
+				},
+				Items: []corev1.KeyToPath{
+					{
+						Key:  inventoryConfigMapKey,
+						Path: inventoryHostsFileName,
+					},
+				},
+			},
+		},
+	})
+	cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+		Name:      inventoryVolumeName,
+		ReadOnly:  true,
+		MountPath: inventoryHostsFilePath,
+		SubPath:   inventoryHostsFileName,
+	})
+
+	// ssh known hosts
+	cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, corev1.Volume{
+		Name: knownHostsVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: knownHostsConfigMapName,
+				},
+				Items: []corev1.KeyToPath{
+					{
+						Key:  knownHostsConfigMapKey,
+						Path: knownHostsFileName,
+					},
+				},
+			},
+		},
+	})
+	cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+		Name:      knownHostsVolumeName,
+		ReadOnly:  true,
+		MountPath: knownHostsFilePath,
+		SubPath:   knownHostsFileName,
+	})
+
+	return cj, nil
+}
+
 func (r *AnsibleReconcileJobReconciler) handleReconcileError(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
 	// TODO: Disable the cronjob and set the resource into error state
 	return nil
@@ -132,6 +298,7 @@ func (r *AnsibleReconcileJobReconciler) ensureRuntimeConfigMap(ctx context.Conte
 		return fmt.Errorf("unable to fetch matching playbook: %w", err)
 	}
 
+	// TODO: Ensure the keys are absent when they are not needed
 	if playbook.Spec.Inline != nil {
 		// inline playbook, mount the strings as files
 		if err := r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+jobConfigNameSuffix, runtimeConfigPlaybookYAMLKey, playbook.Spec.Inline.Playbook, reconcileJob); err != nil {
@@ -160,11 +327,6 @@ func (r *AnsibleReconcileJobReconciler) ensureRuntimeConfigMap(ctx context.Conte
 	return nil
 }
 
-func (r *AnsibleReconcileJobReconciler) ensureCronJobExists(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
-	// TODO: Ensure the cronjob exists and mounts all required files
-	return nil
-}
-
 func (r *AnsibleReconcileJobReconciler) ensureKnownHostsSecretExists(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
 	hosts := &ansibleoperatorv1alpha1.AnsibleHostList{}
 	if err := r.List(ctx, hosts, client.InNamespace(reconcileJob.Namespace)); err != nil {
@@ -175,7 +337,7 @@ func (r *AnsibleReconcileJobReconciler) ensureKnownHostsSecretExists(ctx context
 		return fmt.Errorf("failed to get known hosts for reconcile job %s/%s: %w", reconcileJob.Namespace, reconcileJob.Name, err)
 	}
 	knownHostsString := strings.Join(knownHosts, "\n")
-	err = r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+"-known-hosts", "known_hosts", knownHostsString, reconcileJob)
+	err = r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+"-known-hosts", knownHostsConfigMapKey, knownHostsString, reconcileJob)
 	if err != nil {
 		return fmt.Errorf("failed to ensure known hosts configmap: %w", err)
 	}
@@ -238,7 +400,7 @@ func (r *AnsibleReconcileJobReconciler) ensureInventoryConfigmap(ctx context.Con
 	if err != nil {
 		return fmt.Errorf("failed to construct inventory content: %w", err)
 	}
-	err = r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+"-inventory", "inventory.yaml", inventoryString, reconcileJob)
+	err = r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+"-inventory", inventoryConfigMapKey, inventoryString, reconcileJob)
 	if err != nil {
 		return fmt.Errorf("failed to ensure inventory configmap: %w", err)
 	}
