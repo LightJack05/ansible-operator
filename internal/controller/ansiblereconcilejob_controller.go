@@ -35,6 +35,7 @@ import (
 	ansibleoperatorv1alpha1 "github.com/LightJack05/ansible-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	batchv1ac "k8s.io/client-go/applyconfigurations/batch/v1"
 )
 
 // AnsibleReconcileJobReconciler reconciles a AnsibleReconcileJob object
@@ -43,9 +44,14 @@ type AnsibleReconcileJobReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+const operatorName = "ansible-operator"
+
 // Runtime config map keys and name
 const (
 	jobConfigNameSuffix                 = `-job-config`
+	varsConfigMapSuffix                 = `-vars`
+	knownHostsConfigMapNameSuffix       = "-known-hosts"
+	inventoryConfigMapNameSuffix        = "-inventory"
 	runtimeConfigGitRefKey              = `OPERATOR_GIT_REF`
 	runtimeConfigGitRepoUrlKey          = `OPERATOR_GIT_REPO_URL`
 	runtimeConfigGitPlaybookPathKey     = `OPERATOR_GIT_PLAYBOOK_PATH`
@@ -54,6 +60,9 @@ const (
 	runtimeConfigRequirementsYAMLKey    = `requirements.yml`
 	inventoryConfigMapKey               = "inventory.yaml"
 	knownHostsConfigMapKey              = "known_hosts"
+	sshKeySecretKey                     = "ssh_key"
+	groupVarsConfigMapKey               = "vars"
+	hostVarsConfigMapKey                = "vars"
 )
 
 const (
@@ -66,6 +75,13 @@ var (
 )
 
 const (
+	mountSuffix       = `-mount`
+	hostMountSuffix   = `-host` + mountSuffix
+	groupMountSuffix  = `-group` + mountSuffix
+	sshKeyMountSuffix = `-key` + mountSuffix
+)
+
+const (
 	playbooksVolumeName     = "playbooks"
 	dependenciesVolumeName  = "deps"
 	inventoryVolumeName     = "inventory"
@@ -74,15 +90,23 @@ const (
 )
 
 const (
+	inventoryDir             = "/inventory/"
+	inventoryGroupVarsDir    = inventoryDir + "group_vars/"
+	inventoryHostVarsDir     = inventoryDir + "host_vars/"
 	playbooksEmptyDirPath    = "/playbooks"
 	dependenciesEmptyDirPath = "/deps"
 )
 
 const (
 	inventoryHostsFileName = "hosts.yaml"
-	inventoryHostsFilePath = "/inventory/hosts.yaml"
+	inventoryHostsFilePath = inventoryDir + inventoryHostsFileName
 	knownHostsFileName     = "known_hosts"
 	knownHostsFilePath     = "/ssh/known_hosts"
+	playbookFileName       = "playbook.yml"
+	playbookFilePath       = playbooksEmptyDirPath + playbookFileName
+	requirementsFileName   = "requirements.yml"
+	requirementsFilePath   = playbooksEmptyDirPath + playbookFileName
+	sshKeysDirPath         = "/ssh/keys"
 )
 
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblereconcilejobs,verbs=get;list;watch;create;update;patch;delete
@@ -152,15 +176,83 @@ err:
 	return ctrl.Result{}, fmt.Errorf("error encountered during reconcile: %w", err)
 }
 
+func boolPtr(value bool) *bool {
+	return &value
+}
+
 func (r *AnsibleReconcileJobReconciler) ensureCronJobExists(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
 	// TODO: Ensure the cronjob exists and mounts all required files
 	return nil
 }
 
 func (r *AnsibleReconcileJobReconciler) ensureCronjobWithMounts(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
+	hosts := &ansibleoperatorv1alpha1.AnsibleHostList{}
+	groups := &ansibleoperatorv1alpha1.AnsibleGroupList{}
+
+	if err := r.List(ctx, hosts, client.InNamespace(reconcileJob.Namespace)); err != nil {
+		return fmt.Errorf("unable to list hosts in namespace %s: %w", reconcileJob.Namespace, err)
+	}
+	if err := r.List(ctx, groups, client.InNamespace(reconcileJob.Namespace)); err != nil {
+		return fmt.Errorf("unable to list groups in namespace %s: %w", reconcileJob.Namespace, err)
+	}
+
+	hostSSHKeyPairs := make([]ownerOwnedWithAnsibleNamePair, 0, len(hosts.Items))
+	hostVarPairs := make([]ownerOwnedWithAnsibleNamePair, 0, len(hosts.Items))
+	groupVarPairs := make([]ownerOwnedWithAnsibleNamePair, 0, len(groups.Items))
+
+	for _, host := range hosts.Items {
+		hostSSHKeyPairs = append(hostSSHKeyPairs, ownerOwnedWithAnsibleNamePair{
+			OwnerAnsibleName: host.Spec.AnsibleName,
+			Owner:            host.Name,
+			Owned:            host.Spec.SSH.SSHKeySecretRef.Name,
+		})
+
+		hostVarPairs = append(hostVarPairs, ownerOwnedWithAnsibleNamePair{
+			OwnerAnsibleName: host.Spec.AnsibleName,
+			Owner:            host.Name,
+			Owned:            host.Name + varsConfigMapSuffix,
+		})
+	}
+
+	for _, group := range groups.Items {
+		groupVarPairs = append(groupVarPairs, ownerOwnedWithAnsibleNamePair{
+			OwnerAnsibleName: group.Spec.AnsibleName,
+			Owner:            group.Name,
+			Owned:            group.Name + varsConfigMapSuffix,
+		})
+	}
+
+	cj := constructCronjobWithMounts(ctx,
+		reconcileJob.Name,
+		reconcileJob.Namespace,
+		reconcileJob.Spec.Schedule,
+		reconcileJob.Name+jobConfigNameSuffix,
+		reconcileJob.Name+knownHostsConfigMapNameSuffix,
+		reconcileJob.Name+inventoryConfigMapNameSuffix,
+		hostSSHKeyPairs,
+		hostVarPairs,
+		groupVarPairs)
+
+	if err := ctrl.SetControllerReference(&reconcileJob, cj, r.Scheme); err != nil {
+		return fmt.Errorf("unable to set owner reference on cronjob: %w", err)
+	}
+
+	// Either create or replace the object
+	if err := r.Client.Apply(ctx, cj, client.ForceOwnership, client.FieldOwner(operatorName)); err != nil {
+		return fmt.Errorf("failed to server-side apply cronjob for reconcileJob %s: %w", reconcileJob.Name, err)
+	}
+
+	return nil
 }
 
-func constructCronjobWithMounts(ctx context.Context, name, namespace, schedule string, runtimeConfigMapName, knownHostsConfigMapName, inventoryConfigMapName string, hostSSHKeyConfigMaps, hostVarsConfigMaps, groupVarsConfigMaps []string) (*batchv1.CronJob, error) {
+type ownerOwnedWithAnsibleNamePair struct {
+	OwnerAnsibleName string
+	Owner            string
+	Owned            string
+}
+
+func constructCronjobWithMounts(ctx context.Context, name, namespace, schedule string, runtimeConfigMapName, knownHostsConfigMapName, inventoryConfigMapName string, keySecrets, hostVarsEntries, groupVarsEntries []ownerOwnedWithAnsibleNamePair) *batchv1.CronJob {
+	//TODO: Inject env vars for non-inline playbooks
 	cj := &batchv1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -234,55 +326,105 @@ func constructCronjobWithMounts(ctx context.Context, name, namespace, schedule s
 		},
 	}
 
-	// inventory hosts.yaml
-	cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, corev1.Volume{
+	// runtime config (inline)
+	runtimeConfigVolume := corev1.Volume{
 		Name: inventoryVolumeName,
 		VolumeSource: corev1.VolumeSource{
 			ConfigMap: &corev1.ConfigMapVolumeSource{
+				Optional: boolPtr(true),
 				LocalObjectReference: corev1.LocalObjectReference{
 					Name: inventoryConfigMapName,
 				},
 				Items: []corev1.KeyToPath{
 					{
-						Key:  inventoryConfigMapKey,
-						Path: inventoryHostsFileName,
+						Key:  runtimeConfigPlaybookYAMLKey,
+						Path: playbookFileName,
+					},
+					{
+						Key:  runtimeConfigRequirementsYAMLKey,
+						Path: requirementsFileName,
 					},
 				},
 			},
 		},
-	})
-	cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+	}
+
+	runtimeConfigMount := corev1.VolumeMount{
 		Name:      inventoryVolumeName,
 		ReadOnly:  true,
-		MountPath: inventoryHostsFilePath,
-		SubPath:   inventoryHostsFileName,
-	})
+		MountPath: playbooksEmptyDirPath,
+	}
+
+	cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, runtimeConfigVolume)
+	cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, runtimeConfigMount)
+	cj.Spec.JobTemplate.Spec.Template.Spec.InitContainers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.InitContainers[0].VolumeMounts, runtimeConfigMount)
+
+	// inventory hosts.yaml
+	cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, *buildVolume(inventoryVolumeName, inventoryConfigMapName, inventoryConfigMapKey, inventoryHostsFileName))
+
+	cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, *buildVolumeMount(inventoryVolumeName, inventoryHostsFilePath, inventoryHostsFileName, true))
 
 	// ssh known hosts
-	cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, corev1.Volume{
-		Name: knownHostsVolumeName,
+	cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, *buildVolume(knownHostsVolumeName, knownHostsConfigMapName, knownHostsConfigMapKey, knownHostsFileName))
+	cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, *buildVolumeMount(knownHostsVolumeName, knownHostsFilePath, knownHostsFileName, true))
+
+	// NOTE: These object names should be unique because the K8s API enforces unique names for objects within a namespace
+	// ssh keys
+	for _, sshKeyEntry := range keySecrets {
+		volumeName := sshKeyEntry.Owner + sshKeyMountSuffix
+		volume := buildVolume(volumeName, sshKeyEntry.Owned, sshKeySecretKey, sshKeyEntry.Owner)
+		mount := buildVolumeMount(volumeName, sshKeysDirPath+sshKeyEntry.Owner, sshKeyEntry.Owner, true)
+		cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, *volume)
+		cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, *mount)
+	}
+
+	// Group vars
+	for _, groupVars := range groupVarsEntries {
+		volumeName := groupVars.Owner + groupMountSuffix
+		volume := buildVolume(volumeName, groupVars.Owned, groupVarsConfigMapKey, groupVars.Owner)
+		mount := buildVolumeMount(volumeName, inventoryGroupVarsDir+groupVars.OwnerAnsibleName, groupVars.Owner, true)
+		cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, *volume)
+		cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, *mount)
+	}
+
+	// Host vars
+	for _, hostVars := range hostVarsEntries {
+		volumeName := hostVars.Owner + hostMountSuffix
+		volume := buildVolume(volumeName, hostVars.Owned, hostVarsConfigMapKey, hostVars.Owner)
+		mount := buildVolumeMount(volumeName, inventoryHostVarsDir+hostVars.OwnerAnsibleName, hostVars.Owner, true)
+		cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, *volume)
+		cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, *mount)
+	}
+
+	return cj
+}
+
+func buildVolumeMount(name, mountPath, subPath string, readonly bool) *corev1.VolumeMount {
+	return &corev1.VolumeMount{
+		Name:      name,
+		MountPath: mountPath,
+		SubPath:   subPath,
+		ReadOnly:  readonly,
+	}
+}
+
+func buildVolume(name, configmap, key, path string) *corev1.Volume {
+	return &corev1.Volume{
+		Name: name,
 		VolumeSource: corev1.VolumeSource{
 			ConfigMap: &corev1.ConfigMapVolumeSource{
 				LocalObjectReference: corev1.LocalObjectReference{
-					Name: knownHostsConfigMapName,
+					Name: configmap,
 				},
 				Items: []corev1.KeyToPath{
 					{
-						Key:  knownHostsConfigMapKey,
-						Path: knownHostsFileName,
+						Key:  key,
+						Path: path,
 					},
 				},
 			},
 		},
-	})
-	cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
-		Name:      knownHostsVolumeName,
-		ReadOnly:  true,
-		MountPath: knownHostsFilePath,
-		SubPath:   knownHostsFileName,
-	})
-
-	return cj, nil
+	}
 }
 
 func (r *AnsibleReconcileJobReconciler) handleReconcileError(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
@@ -337,7 +479,7 @@ func (r *AnsibleReconcileJobReconciler) ensureKnownHostsSecretExists(ctx context
 		return fmt.Errorf("failed to get known hosts for reconcile job %s/%s: %w", reconcileJob.Namespace, reconcileJob.Name, err)
 	}
 	knownHostsString := strings.Join(knownHosts, "\n")
-	err = r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+"-known-hosts", knownHostsConfigMapKey, knownHostsString, reconcileJob)
+	err = r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+knownHostsConfigMapNameSuffix, knownHostsConfigMapKey, knownHostsString, reconcileJob)
 	if err != nil {
 		return fmt.Errorf("failed to ensure known hosts configmap: %w", err)
 	}
@@ -400,7 +542,7 @@ func (r *AnsibleReconcileJobReconciler) ensureInventoryConfigmap(ctx context.Con
 	if err != nil {
 		return fmt.Errorf("failed to construct inventory content: %w", err)
 	}
-	err = r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+"-inventory", inventoryConfigMapKey, inventoryString, reconcileJob)
+	err = r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+inventoryConfigMapNameSuffix, inventoryConfigMapKey, inventoryString, reconcileJob)
 	if err != nil {
 		return fmt.Errorf("failed to ensure inventory configmap: %w", err)
 	}

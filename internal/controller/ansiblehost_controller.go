@@ -132,16 +132,16 @@ func (r *AnsibleHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 func (r *AnsibleHostReconciler) ensureVarsConfigMap(ctx context.Context, host *ansibleoperatorv1alpha1.AnsibleHost, vars string) error {
 	cm := &corev1.ConfigMap{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: host.Namespace, Name: host.Name + `-vars`}, cm); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Namespace: host.Namespace, Name: host.Name + varsConfigMapSuffix}, cm); err != nil {
 		if errors.IsNotFound(err) {
 			// Create the ConfigMap if it doesn't exist
 			cm = &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      host.Name + `-vars`,
+					Name:      host.Name + varsConfigMapSuffix,
 					Namespace: host.Namespace,
 				},
 				Data: map[string]string{
-					"vars": vars,
+					hostVarsConfigMapKey: vars,
 				},
 			}
 			if err := ctrl.SetControllerReference(host, cm, r.Scheme); err != nil {
@@ -160,8 +160,8 @@ func (r *AnsibleHostReconciler) ensureVarsConfigMap(ctx context.Context, host *a
 		if cm.Data == nil {
 			cm.Data = make(map[string]string)
 		}
-		if cm.Data["vars"] != vars {
-			cm.Data["vars"] = vars
+		if cm.Data[hostVarsConfigMapKey] != vars {
+			cm.Data[hostVarsConfigMapKey] = vars
 			if err := r.Update(ctx, cm); err != nil {
 				return fmt.Errorf("failed to update ConfigMap for AnsibleHost vars: %w", err)
 			}
@@ -182,7 +182,7 @@ func (r *AnsibleHostReconciler) hostPrivateKeySecretExists(ctx context.Context, 
 		return false, fmt.Errorf("failed to get private key secret: %w", err)
 	}
 
-	keyData, ok := secret.Data["ssh_key"]
+	keyData, ok := secret.Data[sshKeySecretKey]
 	if !ok || len(keyData) == 0 {
 		return false, fmt.Errorf("private key secret is missing 'ssh_key' data or it is empty")
 	}

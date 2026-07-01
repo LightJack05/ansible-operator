@@ -170,16 +170,16 @@ func (r *AnsibleGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 func (r *AnsibleGroupReconciler) ensureVarsConfigMap(ctx context.Context, group *ansibleoperatorv1alpha1.AnsibleGroup, vars string) error {
 	cm := &v1.ConfigMap{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: group.Namespace, Name: group.Name + `-vars`}, cm); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Namespace: group.Namespace, Name: group.Name + varsConfigMapSuffix}, cm); err != nil {
 		if errors.IsNotFound(err) {
 			// Create the ConfigMap if it doesn't exist
 			cm = &v1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      group.Name + `-vars`,
+					Name:      group.Name + varsConfigMapSuffix,
 					Namespace: group.Namespace,
 				},
 				Data: map[string]string{
-					"vars": vars,
+					groupVarsConfigMapKey: vars,
 				},
 			}
 			if err := ctrl.SetControllerReference(group, cm, r.Scheme); err != nil {
@@ -198,8 +198,8 @@ func (r *AnsibleGroupReconciler) ensureVarsConfigMap(ctx context.Context, group 
 		if cm.Data == nil {
 			cm.Data = make(map[string]string)
 		}
-		if cm.Data["vars"] != vars {
-			cm.Data["vars"] = vars
+		if cm.Data[groupVarsConfigMapKey] != vars {
+			cm.Data[groupVarsConfigMapKey] = vars
 			if err := r.Update(ctx, cm); err != nil {
 				return fmt.Errorf("failed to update ConfigMap for AnsibleGroup vars: %w", err)
 			}
