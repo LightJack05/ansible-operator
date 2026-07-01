@@ -41,6 +41,17 @@ type AnsibleReconcileJobReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+// Runtime config map keys and name
+const (
+	jobConfigNameSuffix                 = `-job-config`
+	runtimeConfigGitRefKey              = `OPERATOR_GIT_REF`
+	runtimeConfigGitRepoUrlKey          = `OPERATOR_GIT_REPO_URL`
+	runtimeConfigGitPlaybookPathKey     = `OPERATOR_GIT_PLAYBOOK_PATH`
+	runtimeConfigGitRequirementsPathKey = `OPERATOR_GIT_REQUIREMENTS_PATH`
+	runtimeConfigPlaybookYAMLKey        = `playbook.yml`
+	runtimeConfigRequirementsYAMLKey    = `requirements.yml`
+)
+
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblereconcilejobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblereconcilejobs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblereconcilejobs/finalizers,verbs=update
@@ -114,7 +125,38 @@ func (r *AnsibleReconcileJobReconciler) handleReconcileError(ctx context.Context
 }
 
 func (r *AnsibleReconcileJobReconciler) ensureRuntimeConfigMap(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
-	// TODO: Ensure the runtime configmap exists with all necessary keys
+	// Get the referenced playbook
+	playbook := ansibleoperatorv1alpha1.AnsiblePlaybook{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: reconcileJob.Namespace, Name: reconcileJob.Spec.PlaybookRef.Name}, &playbook)
+	if err != nil {
+		return fmt.Errorf("unable to fetch matching playbook: %w", err)
+	}
+
+	if playbook.Spec.Inline != nil {
+		// inline playbook, mount the strings as files
+		if err := r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+jobConfigNameSuffix, runtimeConfigPlaybookYAMLKey, playbook.Spec.Inline.Playbook, reconcileJob); err != nil {
+			return fmt.Errorf("error ensuring configmap %s for key %s: %w", reconcileJob.Name+jobConfigNameSuffix, runtimeConfigPlaybookYAMLKey, err)
+		}
+		if err := r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+jobConfigNameSuffix, runtimeConfigRequirementsYAMLKey, playbook.Spec.Inline.Playbook, reconcileJob); err != nil {
+			return fmt.Errorf("error ensuring configmap %s for key %s: %w", reconcileJob.Name+jobConfigNameSuffix, runtimeConfigRequirementsYAMLKey, err)
+		}
+	} else if playbook.Spec.Git != nil {
+		// git sourced playbook, pass the source and paths to the init container
+		if err := r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitRepoUrlKey, playbook.Spec.Git.Repo.URL, reconcileJob); err != nil {
+			return fmt.Errorf("error ensuring configmap %s for key %s: %w", reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitRepoUrlKey, err)
+		}
+		if err := r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitRefKey, playbook.Spec.Git.Repo.Ref, reconcileJob); err != nil {
+			return fmt.Errorf("error ensuring configmap %s for key %s: %w", reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitRefKey, err)
+		}
+		if err := r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitPlaybookPathKey, playbook.Spec.Git.PlaybookPath, reconcileJob); err != nil {
+			return fmt.Errorf("error ensuring configmap %s for key %s: %w", reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitPlaybookPathKey, err)
+		}
+		if err := r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitRequirementsPathKey, playbook.Spec.Git.RequirementsPath, reconcileJob); err != nil {
+			return fmt.Errorf("error ensuring configmap %s for key %s: %w", reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitRequirementsPathKey, err)
+		}
+	} else {
+		return fmt.Errorf("error creating runtime configmap: neither git nor inline are non-nil. (API Spec violation?!)")
+	}
 	return nil
 }
 
@@ -208,6 +250,10 @@ func (r *AnsibleReconcileJobReconciler) ensureConfigmapWithKeyValue(ctx context.
 	cm := corev1.ConfigMap{}
 	err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: ansibleReconcileJob.Namespace}, &cm)
 	if err == nil {
+		// ensure we don't deref nil
+		if cm.Data == nil {
+			cm.Data = make(map[string]string)
+		}
 		// ConfigMap exists, check if the key exists and has the correct value
 		if existingValue, ok := cm.Data[key]; ok {
 			if existingValue == value {
