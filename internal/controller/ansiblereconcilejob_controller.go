@@ -241,7 +241,7 @@ func (r *AnsibleReconcileJobReconciler) ensureCronjobWithMounts(ctx context.Cont
 	}
 	u := &unstructured.Unstructured{Object: m}
 	u.SetGroupVersionKind(batchv1.SchemeGroupVersion.WithKind("CronJob"))
-	if err := r.Client.Apply(ctx, client.ApplyConfigurationFromUnstructured(u), client.FieldOwner(operatorName), client.ForceOwnership); err != nil {
+	if err := r.Apply(ctx, client.ApplyConfigurationFromUnstructured(u), client.FieldOwner(operatorName), client.ForceOwnership); err != nil {
 		return fmt.Errorf("failed to server-side apply cronjob for reconcileJob %s: %w", reconcileJob.Name, err)
 	}
 
@@ -255,7 +255,7 @@ type ownerOwnedWithAnsibleNamePair struct {
 }
 
 func constructCronjobWithMounts(name, namespace, schedule string, runtimeConfigMapName, knownHostsConfigMapName, inventoryConfigMapName string, keySecrets, hostVarsEntries, groupVarsEntries []ownerOwnedWithAnsibleNamePair) *batchv1.CronJob {
-	//TODO: Inject env vars for non-inline playbooks
+	// TODO: Inject env vars for non-inline playbooks
 	cj := &batchv1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -366,18 +366,18 @@ func constructCronjobWithMounts(name, namespace, schedule string, runtimeConfigM
 	// inventory hosts.yaml
 	cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, *buildVolumeForConfigMap(inventoryVolumeName, inventoryConfigMapName, inventoryConfigMapKey, inventoryHostsFileName))
 
-	cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, *buildVolumeMount(inventoryVolumeName, inventoryHostsFilePath, inventoryHostsFileName, true))
+	cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, *buildReadOnlyVolumeMount(inventoryVolumeName, inventoryHostsFilePath, inventoryHostsFileName))
 
 	// ssh known hosts
 	cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, *buildVolumeForConfigMap(knownHostsVolumeName, knownHostsConfigMapName, knownHostsConfigMapKey, knownHostsFileName))
-	cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, *buildVolumeMount(knownHostsVolumeName, knownHostsFilePath, knownHostsFileName, true))
+	cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, *buildReadOnlyVolumeMount(knownHostsVolumeName, knownHostsFilePath, knownHostsFileName))
 
 	// NOTE: These object names should be unique because the K8s API enforces unique names for objects within a namespace
 	// ssh keys
 	for _, sshKeyEntry := range keySecrets {
 		volumeName := sshKeyEntry.Owner + sshKeyMountSuffix
 		volume := buildVolumeForSecret(volumeName, sshKeyEntry.Owned, sshKeySecretKey, sshKeyEntry.Owner)
-		mount := buildVolumeMount(volumeName, sshKeysDirPath+sshKeyEntry.Owner, sshKeyEntry.Owner, true)
+		mount := buildReadOnlyVolumeMount(volumeName, sshKeysDirPath+sshKeyEntry.Owner, sshKeyEntry.Owner)
 		cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, *volume)
 		cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, *mount)
 	}
@@ -386,7 +386,7 @@ func constructCronjobWithMounts(name, namespace, schedule string, runtimeConfigM
 	for _, groupVars := range groupVarsEntries {
 		volumeName := groupVars.Owner + groupMountSuffix
 		volume := buildVolumeForConfigMap(volumeName, groupVars.Owned, groupVarsConfigMapKey, groupVars.Owner)
-		mount := buildVolumeMount(volumeName, inventoryGroupVarsDir+groupVars.OwnerAnsibleName, groupVars.Owner, true)
+		mount := buildReadOnlyVolumeMount(volumeName, inventoryGroupVarsDir+groupVars.OwnerAnsibleName, groupVars.Owner)
 		cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, *volume)
 		cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, *mount)
 	}
@@ -395,7 +395,7 @@ func constructCronjobWithMounts(name, namespace, schedule string, runtimeConfigM
 	for _, hostVars := range hostVarsEntries {
 		volumeName := hostVars.Owner + hostMountSuffix
 		volume := buildVolumeForConfigMap(volumeName, hostVars.Owned, hostVarsConfigMapKey, hostVars.Owner)
-		mount := buildVolumeMount(volumeName, inventoryHostVarsDir+hostVars.OwnerAnsibleName, hostVars.Owner, true)
+		mount := buildReadOnlyVolumeMount(volumeName, inventoryHostVarsDir+hostVars.OwnerAnsibleName, hostVars.Owner)
 		cj.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cj.Spec.JobTemplate.Spec.Template.Spec.Volumes, *volume)
 		cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts = append(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].VolumeMounts, *mount)
 	}
@@ -403,12 +403,12 @@ func constructCronjobWithMounts(name, namespace, schedule string, runtimeConfigM
 	return cj
 }
 
-func buildVolumeMount(name, mountPath, subPath string, readonly bool) *corev1.VolumeMount {
+func buildReadOnlyVolumeMount(name, mountPath, subPath string) *corev1.VolumeMount {
 	return &corev1.VolumeMount{
 		Name:      name,
 		MountPath: mountPath,
 		SubPath:   subPath,
-		ReadOnly:  readonly,
+		ReadOnly:  true,
 	}
 }
 
