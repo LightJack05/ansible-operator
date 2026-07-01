@@ -107,7 +107,7 @@ const (
 	playbookFilePath       = playbooksEmptyDirPath + playbookFileName
 	requirementsFileName   = "requirements.yml"
 	requirementsFilePath   = playbooksEmptyDirPath + playbookFileName
-	sshKeysDirPath         = "/ssh/keys"
+	sshKeysDirPath         = "/ssh/keys/"
 )
 
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblereconcilejobs,verbs=get;list;watch;create;update;patch;delete
