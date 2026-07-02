@@ -1,0 +1,21 @@
+- name: Test install flow
+  hosts: web_tier
+  become: true
+
+  roles:
+    - geerlingguy.ntp
+
+  tasks:
+    - name: Set a sysctl value (ansible.posix)
+      ansible.posix.sysctl:
+        name: vm.swappiness
+        value: "5"
+        state: present
+
+    - name: Mount a tmpfs filesystem
+      ansible.posix.mount:
+        path: /mnt/testtmp
+        src: tmpfs
+        fstype: tmpfs
+        opts: size=64m
+        state: mounted
