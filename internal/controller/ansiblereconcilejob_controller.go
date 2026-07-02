@@ -100,7 +100,7 @@ const (
 	inventoryDir             = "/inventory/"
 	inventoryGroupVarsDir    = inventoryDir + "group_vars/"
 	inventoryHostVarsDir     = inventoryDir + "host_vars/"
-	playbooksEmptyDirPath    = "/playbooks"
+	playbooksEmptyDirPath    = "/playbook"
 	dependenciesEmptyDirPath = "/deps"
 	runtimeConfigMountPath   = "/config"
 )
