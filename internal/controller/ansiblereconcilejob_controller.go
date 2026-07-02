@@ -244,18 +244,18 @@ func (r *AnsibleReconcileJobReconciler) updateStatusConditions(ctx context.Conte
 func (r *AnsibleReconcileJobReconciler) updateSuccessfulStatus(ctx context.Context, newestJob *batchv1.Job, reconcileJob *ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
 	if newestJob.Status.Succeeded > 0 {
 		if err := r.setCondition(ctx, reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionSuccessful, metav1.ConditionTrue, "JobSucceeded", "The last job for this reconcileJob completed successfully"); err != nil {
-			return fmt.Errorf("Failed to set Successful status: %w", err)
+			return fmt.Errorf("failed to set Successful status: %w", err)
 		}
 		return nil
 	} else if newestJob.Status.Failed > 0 {
 		if err := r.setCondition(ctx, reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionSuccessful, metav1.ConditionFalse, "JobFailed", "The last job for this reconcileJob failed, check logs for details"); err != nil {
-			return fmt.Errorf("Failed to set Successful status: %w", err)
+			return fmt.Errorf("failed to set Successful status: %w", err)
 		}
 		return nil
 	}
 	// The job has neither successful nor failed runs, it is probably still initializing. Set the status to unknown.
 	if err := r.setCondition(ctx, reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionSuccessful, metav1.ConditionUnknown, "JobStatusUnknown", "The last job for this reconcileJob has no failed or succeeded runs yet."); err != nil {
-		return fmt.Errorf("Failed to set Successful status: %w", err)
+		return fmt.Errorf("failed to set Successful status: %w", err)
 	}
 	return nil
 }
@@ -997,7 +997,7 @@ func (r *AnsibleReconcileJobReconciler) SetupWithManager(mgr ctrl.Manager) error
 }
 
 func (r *AnsibleReconcileJobReconciler) enqueueReconcileJobsIfJobChanged(ctx context.Context, obj client.Object) []reconcile.Request {
-	requests := []reconcile.Request{}
+	requests := make([]reconcile.Request, 0, 1)
 	jobLabels := obj.GetLabels()
 	ownerName, ok := jobLabels[jobLabelOwnerReconcileJob]
 	if !ok {
