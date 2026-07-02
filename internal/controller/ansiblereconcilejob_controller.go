@@ -46,6 +46,10 @@ type AnsibleReconcileJobReconciler struct {
 
 const operatorName = "ansible-operator"
 
+const (
+	jobLabelOwnerReconcileJob = "ansible-operator.lightjack.de/owner-reconcile-job"
+)
+
 // Runtime config map keys and name
 const (
 	jobConfigNameSuffix                 = `-job-config`
@@ -234,6 +238,7 @@ func (r *AnsibleReconcileJobReconciler) ensureCronjobWithMounts(ctx context.Cont
 		reconcileJob.Name,
 		reconcileJob.Namespace,
 		reconcileJob.Spec.Schedule,
+		reconcileJob.Name,
 		reconcileJob.Name+jobConfigNameSuffix,
 		reconcileJob.Name+knownHostsConfigMapNameSuffix,
 		reconcileJob.Name+inventoryConfigMapNameSuffix,
@@ -265,7 +270,7 @@ type ownerOwnedWithAnsibleNamePair struct {
 	Owned            string
 }
 
-func constructCronjobWithMounts(name, namespace, schedule string, runtimeConfigMapName, knownHostsConfigMapName, inventoryConfigMapName string, keySecrets, hostVarsEntries, groupVarsEntries []ownerOwnedWithAnsibleNamePair) *batchv1.CronJob {
+func constructCronjobWithMounts(name, namespace, schedule, reconcileJobName string, runtimeConfigMapName, knownHostsConfigMapName, inventoryConfigMapName string, keySecrets, hostVarsEntries, groupVarsEntries []ownerOwnedWithAnsibleNamePair) *batchv1.CronJob {
 	// TODO: Inject env vars for non-inline playbooks
 	cj := &batchv1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
@@ -276,6 +281,11 @@ func constructCronjobWithMounts(name, namespace, schedule string, runtimeConfigM
 			Schedule:          schedule,
 			ConcurrencyPolicy: batchv1.ForbidConcurrent,
 			JobTemplate: batchv1.JobTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						jobLabelOwnerReconcileJob: reconcileJobName,
+					},
+				},
 				Spec: batchv1.JobSpec{
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
