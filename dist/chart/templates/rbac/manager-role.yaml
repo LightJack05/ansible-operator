@@ -6,6 +6,18 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - configmaps
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - secrets
   verbs:
   - create
@@ -20,6 +32,7 @@ rules:
   - ansiblegroups
   - ansiblehosts
   - ansibleplaybooks
+  - ansiblereconcilejobs
   verbs:
   - create
   - delete
@@ -34,6 +47,7 @@ rules:
   - ansiblegroups/finalizers
   - ansiblehosts/finalizers
   - ansibleplaybooks/finalizers
+  - ansiblereconcilejobs/finalizers
   verbs:
   - update
 - apiGroups:
@@ -42,7 +56,20 @@ rules:
   - ansiblegroups/status
   - ansiblehosts/status
   - ansibleplaybooks/status
+  - ansiblereconcilejobs/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch

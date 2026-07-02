@@ -7,20 +7,21 @@ metadata:
     "helm.sh/resource-policy": keep
     {{- end }}
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: ansiblehosts.ansible-operator.lightjack.de
+  name: ansiblereconcilejobs.ansible-operator.lightjack.de
 spec:
   group: ansible-operator.lightjack.de
   names:
-    kind: AnsibleHost
-    listKind: AnsibleHostList
-    plural: ansiblehosts
-    singular: ansiblehost
+    kind: AnsibleReconcileJob
+    listKind: AnsibleReconcileJobList
+    plural: ansiblereconcilejobs
+    singular: ansiblereconcilejob
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: AnsibleHost is the Schema for the ansiblehosts API
+        description: AnsibleReconcileJob is the Schema for the ansiblereconcilejobs
+          API
         properties:
           apiVersion:
             description: |-
@@ -40,108 +41,37 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of AnsibleHost
+            description: spec defines the desired state of AnsibleReconcileJob
             properties:
-              ansibleName:
-                description: ansibleName is the name used in the Ansible inventory.
-                maxLength: 253
-                pattern: ^[a-zA-Z0-9_.-]+$
-                type: string
-              connection:
-                description: connection defines SSH connection parameters for this
-                  host.
+              playbookRef:
+                description: PlaybookRef is a reference to the AnsiblePlaybook resource
+                  that should be executed by this AnsibleReconcileJob.
                 properties:
-                  host:
-                    description: host is the hostname or IP address to connect to.
-                    maxLength: 253
-                    pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*$
+                  name:
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                     type: string
-                  port:
-                    default: 22
-                    description: port is the SSH port number.
-                    maximum: 65535
-                    minimum: 1
-                    type: integer
-                  user:
-                    default: root
-                    description: user is the SSH login user.
-                    maxLength: 32
-                    pattern: ^[a-z_][a-z0-9_-]*$
-                    type: string
-                required:
-                - host
                 type: object
-              hostVars:
-                description: hostVars is an arbitrary string inserted verbatim into
-                  the Ansible host_vars block.
+                x-kubernetes-map-type: atomic
+              schedule:
+                description: Schedule is a cron expression that defines when the AnsibleReconcileJob
+                  should run.
                 type: string
-              privilege:
-                description: privilege defines privilege escalation settings.
-                properties:
-                  become:
-                    default: false
-                    description: become enables privilege escalation via sudo.
-                    type: boolean
-                type: object
-              ssh:
-                description: ssh defines SSH authentication configuration for this
-                  host.
-                properties:
-                  ignoreHostKey:
-                    default: false
-                    description: |-
-                      ignoreHostKey disables SSH host key verification when true.
-                      When false, the operator trusts the host key on first connection and stores it
-                      in a secret. The auto-created secret is named after the AnsibleHost resource
-                      unless sshHostKeySecretRef is provided.
-                    type: boolean
-                  sshHostKeySecretRef:
-                    description: |-
-                      sshHostKeySecretRef references a Secret used to store (or provide) the trusted SSH host key.
-                      When ignoreHostKey is false, the operator uses the referenced secret as the known-hosts store.
-                    properties:
-                      name:
-                        default: ""
-                        description: |-
-                          Name of the referent.
-                          This field is effectively required, but due to backwards compatibility is
-                          allowed to be empty. Instances of this type with an empty value here are
-                          almost certainly wrong.
-                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                        type: string
-                    type: object
-                    x-kubernetes-map-type: atomic
-                  sshKeySecretRef:
-                    description: |-
-                      sshKeySecretRef references a Secret containing the SSH private key.
-                      The secret must have the key `ssh_key`.
-                    properties:
-                      name:
-                        default: ""
-                        description: |-
-                          Name of the referent.
-                          This field is effectively required, but due to backwards compatibility is
-                          allowed to be empty. Instances of this type with an empty value here are
-                          almost certainly wrong.
-                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                        type: string
-                    type: object
-                    x-kubernetes-map-type: atomic
-                required:
-                - sshHostKeySecretRef
-                - sshKeySecretRef
-                type: object
             required:
-            - ansibleName
-            - connection
-            - ssh
+            - playbookRef
+            - schedule
             type: object
           status:
-            description: status defines the observed state of AnsibleHost
+            description: status defines the observed state of AnsibleReconcileJob
             properties:
               conditions:
                 description: |-
-                  conditions represent the current state of the AnsibleHost resource.
+                  conditions represent the current state of the AnsibleReconcileJob resource.
                   Each condition has a unique type and reflects the status of a specific aspect of the resource.
 
                   Standard condition types include:
