@@ -24,6 +24,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -154,6 +155,24 @@ func (r *AnsibleReconcileJobReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, fmt.Errorf("failed to get AnsibleReconcileJob: %w", err)
 	}
 
+	// Set all condition default to unknown if they do not have a status yet
+	if err = r.defaultStatusToUnknown(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionReady); err != nil {
+		err = fmt.Errorf("failed to default condition %s of reconcile job %s to unknown: %w", ansibleoperatorv1alpha1.AnsibleReconcileJobConditionReady, reconcileJob.Name, err)
+		goto err
+	}
+	if err = r.defaultStatusToUnknown(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionProgressing); err != nil {
+		err = fmt.Errorf("failed to default condition %s of reconcile job %s to unknown: %w", ansibleoperatorv1alpha1.AnsibleReconcileJobConditionProgressing, reconcileJob.Name, err)
+		goto err
+	}
+	if err = r.defaultStatusToUnknown(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionSuccessful); err != nil {
+		err = fmt.Errorf("failed to default condition %s of reconcile job %s to unknown: %w", ansibleoperatorv1alpha1.AnsibleReconcileJobConditionSuccessful, reconcileJob.Name, err)
+		goto err
+	}
+	if err = r.defaultStatusToUnknown(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionChanged); err != nil {
+		err = fmt.Errorf("failed to default condition %s of reconcile job %s to unknown: %w", ansibleoperatorv1alpha1.AnsibleReconcileJobConditionChanged, reconcileJob.Name, err)
+		goto err
+	}
+
 	// Ensure...
 	// ... the inventory configmap exists
 	err = r.ensureInventoryConfigmap(ctx, reconcileJob)
@@ -180,13 +199,41 @@ func (r *AnsibleReconcileJobReconciler) Reconcile(ctx context.Context, req ctrl.
 		goto err
 	}
 
+	if err := r.setCondition(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionReady, metav1.ConditionTrue, "ReconcileSuccess", "Resource reconciled successfully"); err != nil {
+		err = fmt.Errorf("failed to update condition to ready on reconcileJob: %w", err)
+		goto err
+	}
+
 	return ctrl.Result{}, nil
 err:
-	handleError := r.handleReconcileError(ctx, reconcileJob)
-	if handleError != nil {
-		return ctrl.Result{}, fmt.Errorf("error encountered during reconcile: %w; additionally, failed to handle error: %w", err, handleError)
-	}
+	r.handleReconcileError(ctx, reconcileJob, err)
 	return ctrl.Result{}, fmt.Errorf("error encountered during reconcile: %w", err)
+}
+
+func (r *AnsibleReconcileJobReconciler) defaultStatusToUnknown(ctx context.Context, reconcileJob *ansibleoperatorv1alpha1.AnsibleReconcileJob, status string) error {
+	if meta.FindStatusCondition(reconcileJob.Status.Conditions, status) == nil {
+		if err := r.setCondition(ctx, reconcileJob, status, metav1.ConditionUnknown, "ReconcileStarted", fmt.Sprintf("AnsibleGroup is initializing: %s condition not set", status)); err != nil {
+			return fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+		}
+	}
+	return nil
+}
+
+func (r *AnsibleReconcileJobReconciler) setCondition(ctx context.Context, reconcileJob *ansibleoperatorv1alpha1.AnsibleReconcileJob, conditionType string, conditionStatus metav1.ConditionStatus, reason, message string) error {
+	changed := meta.SetStatusCondition(&reconcileJob.Status.Conditions, metav1.Condition{
+		Type:    conditionType,
+		Status:  conditionStatus,
+		Reason:  reason,
+		Message: message,
+	})
+
+	if changed {
+		if err := r.Status().Update(ctx, reconcileJob); err != nil {
+			return fmt.Errorf("unable to update AnsibleGroup status: %v", err)
+		}
+	}
+
+	return nil
 }
 
 func boolPtr(value bool) *bool {
@@ -279,6 +326,7 @@ func constructCronjobWithMounts(name, namespace, schedule, reconcileJobName stri
 		},
 		Spec: batchv1.CronJobSpec{
 			Schedule:          schedule,
+			Suspend:           boolPtr(false),
 			ConcurrencyPolicy: batchv1.ForbidConcurrent,
 			JobTemplate: batchv1.JobTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -493,9 +541,22 @@ func buildVolumeForConfigMap(name, configmap, key, path string) *corev1.Volume {
 	}
 }
 
-func (r *AnsibleReconcileJobReconciler) handleReconcileError(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
-	// TODO: Disable the cronjob and set the resource into error state
-	return nil
+func (r *AnsibleReconcileJobReconciler) handleReconcileError(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob, cause error) {
+	// NOTE: It would be pointless to return an error here, so we just try our best and log any errors, before requeuing the resource
+	lg := logf.FromContext(ctx)
+	lg.Info("Encountered an error during reconcile. Attempting to disable cronjob and set the ReconcileJob into error state...")
+	cronjob := &batchv1.CronJob{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: reconcileJob.Namespace, Name: reconcileJob.Name}, cronjob); err != nil {
+		lg.Error(err, "unable to fetch cronjob matching reconcileJob")
+	}
+	cronjob.Spec.Suspend = boolPtr(true)
+	if err := r.Update(ctx, cronjob); err != nil {
+		lg.Error(err, "unable to update cronjob to disable subsequent executions")
+	}
+
+	if err := r.setCondition(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionReady, metav1.ConditionFalse, "ReconcileError", cause.Error()); err != nil {
+		lg.Error(err, "unable to set Ready condition on reconcileJob")
+	}
 }
 
 func (r *AnsibleReconcileJobReconciler) ensureRuntimeConfigMap(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
