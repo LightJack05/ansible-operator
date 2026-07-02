@@ -129,6 +129,7 @@ const (
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblegroups,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batch,resources=cronjobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -155,21 +156,9 @@ func (r *AnsibleReconcileJobReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, fmt.Errorf("failed to get AnsibleReconcileJob: %w", err)
 	}
 
-	// Set all condition default to unknown if they do not have a status yet
-	if err = r.defaultStatusToUnknown(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionReady); err != nil {
-		err = fmt.Errorf("failed to default condition %s of reconcile job %s to unknown: %w", ansibleoperatorv1alpha1.AnsibleReconcileJobConditionReady, reconcileJob.Name, err)
-		goto err
-	}
-	if err = r.defaultStatusToUnknown(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionProgressing); err != nil {
-		err = fmt.Errorf("failed to default condition %s of reconcile job %s to unknown: %w", ansibleoperatorv1alpha1.AnsibleReconcileJobConditionProgressing, reconcileJob.Name, err)
-		goto err
-	}
-	if err = r.defaultStatusToUnknown(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionSuccessful); err != nil {
-		err = fmt.Errorf("failed to default condition %s of reconcile job %s to unknown: %w", ansibleoperatorv1alpha1.AnsibleReconcileJobConditionSuccessful, reconcileJob.Name, err)
-		goto err
-	}
-	if err = r.defaultStatusToUnknown(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionChanged); err != nil {
-		err = fmt.Errorf("failed to default condition %s of reconcile job %s to unknown: %w", ansibleoperatorv1alpha1.AnsibleReconcileJobConditionChanged, reconcileJob.Name, err)
+	// set all status conditions to unknown if they are not set already
+	if err = r.defaultAllStatusesToUnknown(ctx, &reconcileJob); err != nil {
+		err = fmt.Errorf("unable to set statuses to initial values: %w", err)
 		goto err
 	}
 
@@ -199,6 +188,11 @@ func (r *AnsibleReconcileJobReconciler) Reconcile(ctx context.Context, req ctrl.
 		goto err
 	}
 
+	if err = r.updateStatusConditions(ctx, &reconcileJob); err != nil {
+		err = fmt.Errorf("failed to update status conditions: %w", err)
+		goto err
+	}
+
 	if err = r.setCondition(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionReady, metav1.ConditionTrue, "ReconcileSuccess", "Resource reconciled successfully"); err != nil {
 		err = fmt.Errorf("failed to update condition to ready on reconcileJob: %w", err)
 		goto err
@@ -208,6 +202,93 @@ func (r *AnsibleReconcileJobReconciler) Reconcile(ctx context.Context, req ctrl.
 err:
 	r.handleReconcileError(ctx, reconcileJob, err)
 	return ctrl.Result{}, fmt.Errorf("error encountered during reconcile: %w", err)
+}
+
+func (r *AnsibleReconcileJobReconciler) updateStatusConditions(ctx context.Context, reconcileJob *ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
+	// Get any jobs in the current namespace to check if any are running
+	jobs := batchv1.JobList{}
+	if err := r.List(ctx, &jobs, client.InNamespace(reconcileJob.Namespace), client.MatchingLabels{jobLabelOwnerReconcileJob: reconcileJob.Name}); err != nil {
+		return fmt.Errorf("unable to fetch matching jobs: %w", err)
+	}
+
+	var newestJob *batchv1.Job
+	for _, job := range jobs.Items {
+		if job.Status.StartTime == nil {
+			continue
+		}
+		if newestJob == nil || job.Status.StartTime.After(newestJob.Status.StartTime.Time) {
+			newestJob = &job
+		}
+	}
+
+	// if no job is found, set the conditions to unknown and return nil
+	if newestJob == nil {
+		for _, condition := range []string{ansibleoperatorv1alpha1.AnsibleReconcileJobConditionSuccessful, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionProgressing} {
+			if err := r.setCondition(ctx, reconcileJob, condition, metav1.ConditionUnknown, "NoJobsFound", "There are currently no jobs present matching this reconcileJob"); err != nil {
+				return fmt.Errorf("failed to set status to unknown on condition %s: %w", condition, err)
+			}
+		}
+		return nil
+	}
+
+	if err := r.updateProgressingStatus(ctx, newestJob, reconcileJob); err != nil {
+		return fmt.Errorf("failed to update progressing status: %w", err)
+	}
+	if err := r.updateSuccessfulStatus(ctx, newestJob, reconcileJob); err != nil {
+		return fmt.Errorf("failed to update successful status: %w", err)
+	}
+
+	return nil
+}
+
+func (r *AnsibleReconcileJobReconciler) updateSuccessfulStatus(ctx context.Context, newestJob *batchv1.Job, reconcileJob *ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
+	if newestJob.Status.Succeeded > 0 {
+		if err := r.setCondition(ctx, reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionSuccessful, metav1.ConditionTrue, "JobSucceeded", "The last job for this reconcileJob completed successfully"); err != nil {
+			return fmt.Errorf("Failed to set Successful status: %w", err)
+		}
+		return nil
+	} else if newestJob.Status.Failed > 0 {
+		if err := r.setCondition(ctx, reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionSuccessful, metav1.ConditionFalse, "JobFailed", "The last job for this reconcileJob failed, check logs for details"); err != nil {
+			return fmt.Errorf("Failed to set Successful status: %w", err)
+		}
+		return nil
+	}
+	// The job has neither successful nor failed runs, it is probably still initializing. Set the status to unknown.
+	if err := r.setCondition(ctx, reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionSuccessful, metav1.ConditionUnknown, "JobStatusUnknown", "The last job for this reconcileJob has no failed or succeeded runs yet."); err != nil {
+		return fmt.Errorf("Failed to set Successful status: %w", err)
+	}
+	return nil
+}
+
+func (r *AnsibleReconcileJobReconciler) updateProgressingStatus(ctx context.Context, newestJob *batchv1.Job, reconcileJob *ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
+	if newestJob.Status.Active > 0 {
+		// Newest job is running
+		if err := r.setCondition(ctx, reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionProgressing, metav1.ConditionTrue, "JobRunning", "A job belonging to this reconcileJob is currently running"); err != nil {
+			return fmt.Errorf("failed to set progressing condition on ansible recoconcile job: %w", err)
+		}
+	} else {
+		// Newest job has failed or is complete
+		if err := r.setCondition(ctx, reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionProgressing, metav1.ConditionFalse, "JobNotRunning", "There is no job currently running for this reconcileJob"); err != nil {
+			return fmt.Errorf("failed to set progressing condition on ansible recoconcile job: %w", err)
+		}
+	}
+	return nil
+}
+
+func (r *AnsibleReconcileJobReconciler) defaultAllStatusesToUnknown(ctx context.Context, reconcileJob *ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
+	// Set all condition default to unknown if they do not have a status yet
+	for _, condition := range []string{
+		ansibleoperatorv1alpha1.AnsibleReconcileJobConditionReady,
+		ansibleoperatorv1alpha1.AnsibleReconcileJobConditionProgressing,
+		ansibleoperatorv1alpha1.AnsibleReconcileJobConditionSuccessful,
+		ansibleoperatorv1alpha1.AnsibleReconcileJobConditionChanged,
+	} {
+		if err := r.defaultStatusToUnknown(ctx, reconcileJob, condition); err != nil {
+			return fmt.Errorf("failed to default condition %s of reconcile job %s to unknown: %w", condition, reconcileJob.Name, err)
+		}
+	}
+
+	return nil
 }
 
 func (r *AnsibleReconcileJobReconciler) defaultStatusToUnknown(ctx context.Context, reconcileJob *ansibleoperatorv1alpha1.AnsibleReconcileJob, status string) error {
@@ -335,6 +416,7 @@ func constructCronjobWithMounts(name, namespace, schedule, reconcileJobName stri
 					},
 				},
 				Spec: batchv1.JobSpec{
+					BackoffLimit: int32Ptr(1),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							RestartPolicy: corev1.RestartPolicyNever,
@@ -909,8 +991,21 @@ func (r *AnsibleReconcileJobReconciler) SetupWithManager(mgr ctrl.Manager) error
 		Watches(&ansibleoperatorv1alpha1.AnsibleHost{}, handler.EnqueueRequestsFromMapFunc(r.enqueueReconcileJobsIfChangedHostInNamespace)).
 		Watches(&ansibleoperatorv1alpha1.AnsibleGroup{}, handler.EnqueueRequestsFromMapFunc(r.enqueueReconcileJobsIfChangedGroupInNamespace)).
 		Watches(&ansibleoperatorv1alpha1.AnsiblePlaybook{}, handler.EnqueueRequestsFromMapFunc(r.enqueueReconcileJobsIfReferencedPlaybookChanged)).
+		Watches(&batchv1.Job{}, handler.EnqueueRequestsFromMapFunc(r.enqueueReconcileJobsIfJobChanged)).
 		Named("ansiblereconcilejob").
 		Complete(r)
+}
+
+func (r *AnsibleReconcileJobReconciler) enqueueReconcileJobsIfJobChanged(ctx context.Context, obj client.Object) []reconcile.Request {
+	requests := []reconcile.Request{}
+	jobLabels := obj.GetLabels()
+	ownerName, ok := jobLabels[jobLabelOwnerReconcileJob]
+	if !ok {
+		// Not our job
+		return nil
+	}
+	requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKey{Namespace: obj.GetNamespace(), Name: ownerName}})
+	return requests
 }
 
 func (r *AnsibleReconcileJobReconciler) enqueueReconcileJobsIfReferencedPlaybookChanged(ctx context.Context, obj client.Object) []reconcile.Request {
