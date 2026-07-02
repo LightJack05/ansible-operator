@@ -66,6 +66,13 @@ const (
 )
 
 const (
+	runtimeConfigGitRefEnvVar              = runtimeConfigGitRefKey
+	runtimeConfigGitRepoUrlEnvVar          = runtimeConfigGitRepoUrlKey
+	runtimeConfigGitPlaybookPathEnvVar     = runtimeConfigGitPlaybookPathKey
+	runtimeConfigGitRequirementsPathEnvVar = runtimeConfigGitRequirementsPathKey
+)
+
+const (
 	ociImageJobInitContainer    = "ghcr.io/lightjack05/ansible-operator-runner-init:latest"
 	ociImageJobRuntimeContainer = "ghcr.io/lightjack05/ansible-operator-runner-runner:latest"
 )
@@ -328,6 +335,29 @@ func constructCronjobWithMounts(name, namespace, schedule string, runtimeConfigM
 				},
 			},
 		},
+	}
+
+	makeEnvVarEntryFromConfigMap := func(variable, configmap, key string) corev1.EnvVar {
+		return corev1.EnvVar{
+			Name: variable,
+			ValueFrom: &corev1.EnvVarSource{
+				ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: configmap,
+					},
+					Key:      key,
+					Optional: boolPtr(true),
+				},
+			},
+		}
+	}
+
+	// Env vars
+	cj.Spec.JobTemplate.Spec.Template.Spec.InitContainers[0].Env = []corev1.EnvVar{
+		makeEnvVarEntryFromConfigMap(runtimeConfigGitRepoUrlEnvVar, runtimeConfigMapName, runtimeConfigGitRepoUrlKey),
+		makeEnvVarEntryFromConfigMap(runtimeConfigGitRefEnvVar, runtimeConfigMapName, runtimeConfigGitRefKey),
+		makeEnvVarEntryFromConfigMap(runtimeConfigGitPlaybookPathEnvVar, runtimeConfigMapName, runtimeConfigGitPlaybookPathKey),
+		makeEnvVarEntryFromConfigMap(runtimeConfigGitRequirementsPathEnvVar, runtimeConfigMapName, runtimeConfigGitRequirementsPathKey),
 	}
 
 	// runtime config (inline)
@@ -777,15 +807,44 @@ func (r *AnsibleReconcileJobReconciler) getAnsibleHostsInNamespace(ctx context.C
 	return hostMap, nil
 }
 
+const (
+	playbookIndexer = ".spec.playbookRef.name"
+)
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *AnsibleReconcileJobReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// index the playbooks so we know which reconcile jobs to reconcile when they change
+	err := mgr.GetFieldIndexer().IndexField(context.Background(), &ansibleoperatorv1alpha1.AnsibleReconcileJob{}, playbookIndexer, func(o client.Object) []string {
+		reconcileJob := o.(*ansibleoperatorv1alpha1.AnsibleReconcileJob)
+		return []string{reconcileJob.Spec.PlaybookRef.Name}
+	})
+
+	if err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ansibleoperatorv1alpha1.AnsibleReconcileJob{}).
 		Owns(&corev1.ConfigMap{}).
+		Owns(&batchv1.CronJob{}).
 		Watches(&ansibleoperatorv1alpha1.AnsibleHost{}, handler.EnqueueRequestsFromMapFunc(r.enqueueReconcileJobsIfChangedHostInNamespace)).
 		Watches(&ansibleoperatorv1alpha1.AnsibleGroup{}, handler.EnqueueRequestsFromMapFunc(r.enqueueReconcileJobsIfChangedGroupInNamespace)).
+		Watches(&ansibleoperatorv1alpha1.AnsiblePlaybook{}, handler.EnqueueRequestsFromMapFunc(r.enqueueReconcileJobsIfReferencedPlaybookChanged)).
 		Named("ansiblereconcilejob").
 		Complete(r)
+}
+
+func (r *AnsibleReconcileJobReconciler) enqueueReconcileJobsIfReferencedPlaybookChanged(ctx context.Context, obj client.Object) []reconcile.Request {
+	var reconcileJobs ansibleoperatorv1alpha1.AnsibleReconcileJobList
+	err := r.List(ctx, &reconcileJobs, client.MatchingFields{playbookIndexer: obj.GetName()}, client.InNamespace(obj.GetNamespace()))
+	if err != nil {
+		return nil
+	}
+	requests := make([]reconcile.Request, 0, len(reconcileJobs.Items))
+	for _, reconcileJob := range reconcileJobs.Items {
+		requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&reconcileJob)})
+	}
+	return requests
 }
 
 func (r *AnsibleReconcileJobReconciler) enqueueReconcileJobsIfChangedHostInNamespace(ctx context.Context, obj client.Object) []reconcile.Request {
