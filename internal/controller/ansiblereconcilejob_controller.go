@@ -189,6 +189,10 @@ func boolPtr(value bool) *bool {
 	return &value
 }
 
+func int32Ptr(value int32) *int32 {
+	return &value
+}
+
 func (r *AnsibleReconcileJobReconciler) ensureCronjobWithMounts(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
 	hosts := &ansibleoperatorv1alpha1.AnsibleHostList{}
 	groups := &ansibleoperatorv1alpha1.AnsibleGroupList{}
@@ -452,6 +456,7 @@ func buildVolumeForSecret(name, secret, key, path string) *corev1.Volume {
 					{
 						Key:  key,
 						Path: path,
+						Mode: int32Ptr(0o600),
 					},
 				},
 			},
@@ -664,11 +669,12 @@ type InventoryContentGroup struct {
 }
 
 type InventoryContentHost struct {
-	InventoryName string
-	Hostname      string
-	Port          uint16
-	Username      string
-	Become        bool
+	KubernetesName string
+	InventoryName  string
+	Hostname       string
+	Port           uint16
+	Username       string
+	Become         bool
 }
 type InventoryContent struct {
 	Groups []InventoryContentGroup
@@ -731,6 +737,7 @@ func renderInventoryTemplate(inventory InventoryContent) (string, error) {
     {{- if .Become }}
       ansible_become: true
     {{- end }}
+      ansible_ssh_private_key_file: /ssh/keys/{{.KubernetesName}}
 {{- end }}
 {{ range .Groups }}
 {{- .Name }}:
@@ -775,11 +782,12 @@ func mapMemberHost(key string, hostMap map[string]ansibleoperatorv1alpha1.Ansibl
 
 func mapAnsibleHost(host ansibleoperatorv1alpha1.AnsibleHost) InventoryContentHost {
 	return InventoryContentHost{
-		InventoryName: host.Spec.AnsibleName,
-		Hostname:      host.Spec.Connection.Host,
-		Port:          host.Spec.Connection.Port,
-		Username:      host.Spec.Connection.User,
-		Become:        host.Spec.Privilege.Become,
+		KubernetesName: host.Name,
+		InventoryName:  host.Spec.AnsibleName,
+		Hostname:       host.Spec.Connection.Host,
+		Port:           host.Spec.Connection.Port,
+		Username:       host.Spec.Connection.User,
+		Become:         host.Spec.Privilege.Become,
 	}
 }
 
