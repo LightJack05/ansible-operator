@@ -1,0 +1,29 @@
+# cgit configuration for the test git server.
+
+css=/cgit.css
+logo=/cgit.png
+favicon=/favicon.ico
+virtual-root=/
+
+root-title=Test Git Server
+root-desc=Bare repositories generated from /data
+
+# Auto-discover every repo under /srv/git and hide the .git suffix.
+scan-path=/srv/git
+remove-suffix=1
+
+# No on-disk cache; simplest for a throwaway container.
+cache-size=0
+
+# Advertised clone URLs shown on each repo's summary page.
+# $HTTP_HOST and $CGIT_REPO_URL are expanded by cgit per request/repo.
+clone-url=http://$HTTP_HOST/git/$CGIT_REPO_URL.git ssh://git@$HTTP_HOST/srv/git/$CGIT_REPO_URL.git
+
+# Cosmetic extras.
+enable-index-links=1
+enable-index-owner=0
+enable-commit-graph=1
+enable-log-filecount=1
+enable-log-linecount=1
+snapshots=tar.gz zip
+
