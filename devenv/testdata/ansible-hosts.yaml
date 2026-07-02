@@ -34,6 +34,9 @@ spec:
     ignoreHostKey: false
   privilege:
     become: true
+  hostVars: |
+    content: "fun content"
+    location: /test-file.txt
 ---
 apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsibleHost

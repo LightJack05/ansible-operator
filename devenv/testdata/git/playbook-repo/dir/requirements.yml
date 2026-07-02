@@ -1,4 +1,4 @@
 roles:
-  - name: geerlingguy.ntp
-collections:
-  - name: ansible.posix
+- name: ansible_test_role
+  src: git+https://gitea.lightjack.de/Test-Org/ansible-test-role.git
+  version: main

@@ -1,21 +1,24 @@
-- name: Test install flow
-  hosts: web_tier
+- name: create file with group vars
+  hosts: databases
   become: true
 
   roles:
-    - geerlingguy.ntp
+    - role: ansible_test_role
 
+- name: create file with inline vars
+  hosts: ssh-node-1
+  become: true
+  roles:
+    - role: ansible_test_role
+      vars:
+        content: "Hello world!"
+        location: /test_file_inline.txt
+
+- name: create file with host vars and inline task
+  hosts: ssh-node-2
+  become: true
   tasks:
-    - name: Set a sysctl value (ansible.posix)
-      ansible.posix.sysctl:
-        name: vm.swappiness
-        value: "5"
-        state: present
-
-    - name: Mount a tmpfs filesystem
-      ansible.posix.mount:
-        path: /mnt/testtmp
-        src: tmpfs
-        fstype: tmpfs
-        opts: size=64m
-        state: mounted
+    - name: Create file
+      ansible.builtin.copy:
+        content: "{{ content }}"
+        dest: "{{ location }}"

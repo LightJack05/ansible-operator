@@ -28,7 +28,8 @@ spec:
     - name: ssh-node-3
   groups: []
   groupVars: |
-    db_engine: postgres
+    content: "Hello world!"
+    location: /tmp/test_file.txt
 ---
 # group-production: nested parent group.
 # No direct hosts; aggregates the two healthy leaf groups above. Should be
@@ -59,4 +60,4 @@ spec:
     - name: ssh-node-1
   groups:
     - name: group-production
-  groupVars: "foobar: test"
+  groupVars: ""
