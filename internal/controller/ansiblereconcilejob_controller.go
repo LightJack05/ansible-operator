@@ -866,7 +866,7 @@ func (r *AnsibleReconcileJobReconciler) enqueueReconcileJobsIfReferencedPlaybook
 }
 
 func (r *AnsibleReconcileJobReconciler) enqueueReconcileJobsIfChangedHostInNamespace(ctx context.Context, obj client.Object) []reconcile.Request {
-	requests, err := r.newMethod(ctx, obj.GetNamespace())
+	requests, err := r.requestAllReconcileJobsInNamespace(ctx, obj.GetNamespace())
 	if err != nil {
 		logf.Log.Error(err, "failed to enqueue AnsibleReconcileJobs for AnsibleHost change")
 		return []reconcile.Request{}
@@ -875,7 +875,7 @@ func (r *AnsibleReconcileJobReconciler) enqueueReconcileJobsIfChangedHostInNames
 }
 
 func (r *AnsibleReconcileJobReconciler) enqueueReconcileJobsIfChangedGroupInNamespace(ctx context.Context, obj client.Object) []reconcile.Request {
-	requests, err := r.newMethod(ctx, obj.GetNamespace())
+	requests, err := r.requestAllReconcileJobsInNamespace(ctx, obj.GetNamespace())
 	if err != nil {
 		logf.Log.Error(err, "failed to enqueue AnsibleReconcileJobs for AnsibleGroup change")
 		return []reconcile.Request{}
@@ -883,7 +883,7 @@ func (r *AnsibleReconcileJobReconciler) enqueueReconcileJobsIfChangedGroupInName
 	return requests
 }
 
-func (r *AnsibleReconcileJobReconciler) newMethod(ctx context.Context, namespace string) ([]reconcile.Request, error) {
+func (r *AnsibleReconcileJobReconciler) requestAllReconcileJobsInNamespace(ctx context.Context, namespace string) ([]reconcile.Request, error) {
 	requests := []reconcile.Request{}
 	// List all AnsibleReconcileJobs in the same namespace
 	reconcileJobs := &ansibleoperatorv1alpha1.AnsibleReconcileJobList{}
