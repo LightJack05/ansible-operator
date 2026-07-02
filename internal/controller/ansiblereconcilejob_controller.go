@@ -199,7 +199,7 @@ func (r *AnsibleReconcileJobReconciler) Reconcile(ctx context.Context, req ctrl.
 		goto err
 	}
 
-	if err := r.setCondition(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionReady, metav1.ConditionTrue, "ReconcileSuccess", "Resource reconciled successfully"); err != nil {
+	if err = r.setCondition(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionReady, metav1.ConditionTrue, "ReconcileSuccess", "Resource reconciled successfully"); err != nil {
 		err = fmt.Errorf("failed to update condition to ready on reconcileJob: %w", err)
 		goto err
 	}
