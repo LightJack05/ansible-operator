@@ -1,4 +1,4 @@
 roles:
 - name: ansible_test_role
-  src: git+https://gitea.lightjack.de/Test-Org/ansible-test-role.git
+  src: git+http://git-server.default.svc.cluster.local/git/ansible-test-role.git
   version: main
