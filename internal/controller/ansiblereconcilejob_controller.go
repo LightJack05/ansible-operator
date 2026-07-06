@@ -281,7 +281,6 @@ func (r *AnsibleReconcileJobReconciler) defaultAllStatusesToUnknown(ctx context.
 		ansibleoperatorv1alpha1.AnsibleReconcileJobConditionReady,
 		ansibleoperatorv1alpha1.AnsibleReconcileJobConditionProgressing,
 		ansibleoperatorv1alpha1.AnsibleReconcileJobConditionSuccessful,
-		ansibleoperatorv1alpha1.AnsibleReconcileJobConditionChanged,
 	} {
 		if err := r.defaultStatusToUnknown(ctx, reconcileJob, condition); err != nil {
 			return fmt.Errorf("failed to default condition %s of reconcile job %s to unknown: %w", condition, reconcileJob.Name, err)

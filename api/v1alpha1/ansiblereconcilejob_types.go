@@ -28,8 +28,6 @@ const (
 	AnsibleReconcileJobConditionProgressing = "Progressing"
 	// ansibleReconcileJobConditionSuccessful means that the last execution of the job was successful (no failed tasks)
 	AnsibleReconcileJobConditionSuccessful = "Successful"
-	// ansibleReconcileJobConditionChanged means that the last execution produced at least one task that had the ansible status "changed"
-	AnsibleReconcileJobConditionChanged = "Changed"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
