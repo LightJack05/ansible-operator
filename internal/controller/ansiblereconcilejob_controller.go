@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"text/template"
 
@@ -838,11 +840,14 @@ func constructInventoryContent(hostMap map[string]ansibleoperatorv1alpha1.Ansibl
 		Hosts:  []InventoryContentHost{},
 	}
 
-	for _, host := range hostMap {
-		inventoryContent.Hosts = append(inventoryContent.Hosts, mapAnsibleHost(host))
+	// Iterate in sorted order so the rendered inventory is deterministic and
+	// does not churn the configmap on every reconcile.
+	for _, hostName := range slices.Sorted(maps.Keys(hostMap)) {
+		inventoryContent.Hosts = append(inventoryContent.Hosts, mapAnsibleHost(hostMap[hostName]))
 	}
 
-	for _, group := range groupMap {
+	for _, groupName := range slices.Sorted(maps.Keys(groupMap)) {
+		group := groupMap[groupName]
 		inventoryGroupEntry := InventoryContentGroup{
 			Name: group.Spec.AnsibleName,
 		}
