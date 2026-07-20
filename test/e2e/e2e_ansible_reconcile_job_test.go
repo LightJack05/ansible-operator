@@ -155,6 +155,17 @@ func AnsibleReconcileJobTests() {
 				})
 			})
 			Context("when using a git playbook", func() {
+				It("should successfully apply the playbook", func() {
+					By("creating the AnsibleReconcileJob")
+					createAnsibleReconcileJob("reconcile-job", testResourceNamespace, "* * * * *", "git-ansible-playbook")
+					By("Waiting for the test files to be created")
+					eventuallyFileShouldExist(testResourceNamespace, 0, "/test_file_group.txt")
+					eventuallyFileShouldExist(testResourceNamespace, 1, "/test_file_host.txt")
+					eventuallyFileShouldExist(testResourceNamespace, 2, "/test_file_host.txt")
+					eventuallyFileShouldContain(testResourceNamespace, 0, "/test_file_group.txt", "Hello, group!")
+					eventuallyFileShouldContain(testResourceNamespace, 1, "/test_file_host.txt", "Hello, host!")
+					eventuallyFileShouldContain(testResourceNamespace, 2, "/test_file_host.txt", "Hello, host!")
+				})
 			})
 		})
 		Context("when created with invalid inventory", func() {
