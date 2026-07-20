@@ -40,13 +40,14 @@ func AnsibleReconcileJobTests() {
 			By("Creating matching AnsibleHost resources")
 			for i := range sshNodeCount {
 				createSSHKeySecret(testResourceNamespace, fmt.Sprintf("ssh-node-%d-credentials", i))
-				createValidAnsibleHost(
+				createValidAnsibleHostWithVars(
 					fmt.Sprintf("ansible-host-%d", i),
 					testResourceNamespace,
 					fmt.Sprintf("ssh-node-%d.%s.svc.cluster.local", i, testResourceNamespace),
 					"root",
 					fmt.Sprintf("ssh-node-%d-credentials", i),
 					fmt.Sprintf("ssh-node-%d-hostkey", i),
+					`"{host_content: 'Hello, host!'}"`,
 					22,
 					false,
 				)
@@ -72,11 +73,61 @@ func AnsibleReconcileJobTests() {
 			createAnsibleGroup(
 				"static-valid-ansible-group",
 				testResourceNamespace,
-				"",
+				"{group_content: 'Hello, group!'}",
 				hostNames,
 				make([]string, 0),
 			)
 			waitForAnsibleGroupReady("static-valid-ansible-group", testResourceNamespace)
+
+			By("creating a valid ansible playbook pointing at a git repository")
+			createGitAnsiblePlaybook(
+				"git-ansible-playbook",
+				testResourceNamespace,
+				"http://git-server.default.svc.cluster.local/git/playbook-repo.git",
+				"main",
+				"playbook.yml",
+				"dir/requirements.yml",
+			)
+
+			By("creating a valid ansible playbook with inline playbook and requirements")
+			inlinePlaybook := `- name: create file from group vars
+  hosts: ansible-host-0
+  become: true
+  roles:
+    - role: ansible_test_role
+      vars:
+        content: "{{ group_content }}"
+        location: /test_file_inline_group.txt
+
+- name: create file from host vars
+  hosts: ansible-host-1
+  become: true
+  roles:
+    - role: ansible_test_role
+      vars:
+        content: "{{ host_content }}"
+        location: /test_file_inline_host.txt
+
+- name: create file from host vars with inline task
+  hosts: ansible-host-2
+  become: true
+  tasks:
+    - name: Create file
+      ansible.builtin.copy:
+        content: "{{ host_content }}"
+        dest: /test_file_inline_host.txt
+`
+			inlineRequirements := `roles:
+  - name: ansible_test_role
+    src: git+http://git-server.default.svc.cluster.local/git/ansible-test-role.git
+    version: main
+`
+			createInlineAnsiblePlaybook(
+				"inline-ansible-playbook",
+				testResourceNamespace,
+				inlinePlaybook,
+				inlineRequirements,
+			)
 		})
 
 		AfterEach(func() {
@@ -85,10 +136,37 @@ func AnsibleReconcileJobTests() {
 		})
 
 		Context("when created with valid configuration", func() {
+			Context("when using an inline playbook", func() {
+				It("should successfully apply the playbook", func() {
+					By("creating the AnsibleReconcileJob")
+					createAnsibleReconcileJob("reconcile-job", testResourceNamespace, "* * * * *", "inline-ansible-playbook")
+					By("Waiting for the test files to be created")
+					eventuallyFileShouldExist(testResourceNamespace, 0, "/test_file_inline_group.txt")
+					eventuallyFileShouldExist(testResourceNamespace, 1, "/test_file_inline_host.txt")
+					eventuallyFileShouldExist(testResourceNamespace, 2, "/test_file_inline_host.txt")
+					eventuallyFileShouldContain(testResourceNamespace, 0, "/test_file_inline_group.txt", "Hello, group!")
+					eventuallyFileShouldContain(testResourceNamespace, 1, "/test_file_inline_host.txt", "Hello, host!")
+					eventuallyFileShouldContain(testResourceNamespace, 2, "/test_file_inline_host.txt", "Hello, host!")
+				})
+			})
+			Context("when using a git playbook", func() {
+			})
 		})
 		Context("when created with invalid inventory", func() {
 		})
 		Context("when created with failing playbook", func() {
 		})
 	})
+}
+
+func eventuallyFileShouldContain(namespace string, node int, filename string, content string) {
+	Eventually(func() string {
+		return catFileOnSSHNode(namespace, node, filename)
+	}).WithTimeout(3 * time.Minute).Should(Equal(content))
+}
+
+func eventuallyFileShouldExist(namespace string, node int, filename string) {
+	Eventually(func() bool {
+		return fileExistsOnSSHNode(namespace, node, filename)
+	}).WithTimeout(3 * time.Minute).Should(Equal(true))
 }

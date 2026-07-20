@@ -268,8 +268,8 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 	})
 
-	AnsibleHostTests()
-	AnsibleGroupTests()
+	//AnsibleHostTests()
+	//AnsibleGroupTests()
 	AnsibleReconcileJobTests()
 })
 

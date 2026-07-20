@@ -1,24 +1,30 @@
-- name: create file with group vars
-  hosts: databases
-  become: true
-
-  roles:
-    - role: ansible_test_role
-
-- name: create file with inline vars
-  hosts: ssh-node-1
+# Targets the e2e test inventory: hosts ansible-host-0/1/2 in the group
+# static-valid-ansible-group, with group_content set via group vars and
+# host_content set via host vars (see the e2e suite). File locations are
+# static so tests can assert on known paths.
+- name: create file from group vars
+  hosts: ansible-host-0
   become: true
   roles:
     - role: ansible_test_role
       vars:
-        content: "Hello world!"
-        location: /test_file_inline.txt
+        content: "{{ group_content }}"
+        location: /test_file_group.txt
 
-- name: create file with host vars and inline task
-  hosts: ssh-node-2
+- name: create file from host vars
+  hosts: ansible-host-1
+  become: true
+  roles:
+    - role: ansible_test_role
+      vars:
+        content: "{{ host_content }}"
+        location: /test_file_host.txt
+
+- name: create file from host vars with inline task
+  hosts: ansible-host-2
   become: true
   tasks:
     - name: Create file
       ansible.builtin.copy:
-        content: "{{ content }}"
-        dest: "{{ location }}"
+        content: "{{ host_content }}"
+        dest: /test_file_host.txt
