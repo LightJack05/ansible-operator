@@ -116,9 +116,7 @@ const (
 	knownHostsFileName     = "known_hosts"
 	knownHostsFilePath     = "/ssh/known_hosts"
 	playbookFileName       = "playbook.yml"
-	playbookFilePath       = playbooksEmptyDirPath + playbookFileName
 	requirementsFileName   = "requirements.yml"
-	requirementsFilePath   = playbooksEmptyDirPath + playbookFileName
 	sshKeysDirPath         = "/ssh/keys/"
 )
 
@@ -629,10 +627,11 @@ func (r *AnsibleReconcileJobReconciler) handleReconcileError(ctx context.Context
 	cronjob := &batchv1.CronJob{}
 	if err := r.Get(ctx, client.ObjectKey{Namespace: reconcileJob.Namespace, Name: reconcileJob.Name}, cronjob); err != nil {
 		lg.Error(err, "unable to fetch cronjob matching reconcileJob")
-	}
-	cronjob.Spec.Suspend = boolPtr(true)
-	if err := r.Update(ctx, cronjob); err != nil {
-		lg.Error(err, "unable to update cronjob to disable subsequent executions")
+	} else {
+		cronjob.Spec.Suspend = boolPtr(true)
+		if err := r.Update(ctx, cronjob); err != nil {
+			lg.Error(err, "unable to update cronjob to disable subsequent executions")
+		}
 	}
 
 	if err := r.setCondition(ctx, &reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionReady, metav1.ConditionFalse, "ReconcileError", cause.Error()); err != nil {
