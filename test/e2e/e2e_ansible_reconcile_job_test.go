@@ -263,6 +263,43 @@ func AnsibleReconcileJobTests() {
 					eventuallyFileShouldExist(testResourceNamespace, 0, "/test_file_switched.txt")
 					eventuallyFileShouldContain(testResourceNamespace, 0, "/test_file_switched.txt", "switched to inline")
 				})
+				It("should use the new playbook when the referenced playbook is switched from inline to git", func() {
+					// This guards against stale inline keys in the runtime
+					// configmap shadowing the git checkout after the switch.
+					By("creating an inline playbook writing a marker file")
+					inlineBeforeSwitch := `- name: write marker file before switching to git
+  hosts: ansible-host-0
+  become: true
+  tasks:
+    - name: Create marker file
+      ansible.builtin.copy:
+        content: inline before switch
+        dest: /test_file_before_switch.txt
+`
+					createInlineAnsiblePlaybook(
+						"switching-playbook",
+						testResourceNamespace,
+						inlineBeforeSwitch,
+						"",
+					)
+					By("creating the AnsibleReconcileJob")
+					createAnsibleReconcileJob("reconcile-job", testResourceNamespace, "* * * * *", "switching-playbook")
+					By("waiting for the inline playbook to be applied")
+					eventuallyFileShouldExist(testResourceNamespace, 0, "/test_file_before_switch.txt")
+					eventuallyFileShouldContain(testResourceNamespace, 0, "/test_file_before_switch.txt", "inline before switch")
+					By("switching the referenced playbook from inline to git")
+					createGitAnsiblePlaybook(
+						"switching-playbook",
+						testResourceNamespace,
+						"http://git-server.default.svc.cluster.local/git/playbook-repo.git",
+						"main",
+						"playbook.yml",
+						"dir/requirements.yml",
+					)
+					By("waiting for the git playbook to be applied on a subsequent run")
+					eventuallyFileShouldExist(testResourceNamespace, 0, "/test_file_group.txt")
+					eventuallyFileShouldContain(testResourceNamespace, 0, "/test_file_group.txt", "Hello, group!")
+				})
 			})
 			Context("when a host is added after the reconcile job is created", func() {
 				It("should include the new host in subsequent runs", func() {

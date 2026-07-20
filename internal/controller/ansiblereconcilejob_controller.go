@@ -127,6 +127,8 @@ const (
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblereconcilejobs/finalizers,verbs=update
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblehosts,verbs=get;list;watch
 // +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansiblegroups,verbs=get;list;watch
+// +kubebuilder:rbac:groups=ansible-operator.lightjack.de,resources=ansibleplaybooks,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batch,resources=cronjobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
@@ -264,12 +266,12 @@ func (r *AnsibleReconcileJobReconciler) updateProgressingStatus(ctx context.Cont
 	if newestJob.Status.Active > 0 {
 		// Newest job is running
 		if err := r.setCondition(ctx, reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionProgressing, metav1.ConditionTrue, "JobRunning", "A job belonging to this reconcileJob is currently running"); err != nil {
-			return fmt.Errorf("failed to set progressing condition on ansible recoconcile job: %w", err)
+			return fmt.Errorf("failed to set progressing condition on ansible reconcile job: %w", err)
 		}
 	} else {
 		// Newest job has failed or is complete
 		if err := r.setCondition(ctx, reconcileJob, ansibleoperatorv1alpha1.AnsibleReconcileJobConditionProgressing, metav1.ConditionFalse, "JobNotRunning", "There is no job currently running for this reconcileJob"); err != nil {
-			return fmt.Errorf("failed to set progressing condition on ansible recoconcile job: %w", err)
+			return fmt.Errorf("failed to set progressing condition on ansible reconcile job: %w", err)
 		}
 	}
 	return nil
@@ -292,8 +294,8 @@ func (r *AnsibleReconcileJobReconciler) defaultAllStatusesToUnknown(ctx context.
 
 func (r *AnsibleReconcileJobReconciler) defaultStatusToUnknown(ctx context.Context, reconcileJob *ansibleoperatorv1alpha1.AnsibleReconcileJob, status string) error {
 	if meta.FindStatusCondition(reconcileJob.Status.Conditions, status) == nil {
-		if err := r.setCondition(ctx, reconcileJob, status, metav1.ConditionUnknown, "ReconcileStarted", fmt.Sprintf("AnsibleGroup is initializing: %s condition not set", status)); err != nil {
-			return fmt.Errorf("failed to set condition on AnsibleGroup: %v", err)
+		if err := r.setCondition(ctx, reconcileJob, status, metav1.ConditionUnknown, "ReconcileStarted", fmt.Sprintf("AnsibleReconcileJob is initializing: %s condition not set", status)); err != nil {
+			return fmt.Errorf("failed to set condition on AnsibleReconcileJob: %v", err)
 		}
 	}
 	return nil
@@ -309,7 +311,7 @@ func (r *AnsibleReconcileJobReconciler) setCondition(ctx context.Context, reconc
 
 	if changed {
 		if err := r.Status().Update(ctx, reconcileJob); err != nil {
-			return fmt.Errorf("unable to update AnsibleGroup status: %v", err)
+			return fmt.Errorf("unable to update AnsibleReconcileJob status: %v", err)
 		}
 	}
 
@@ -649,31 +651,26 @@ func (r *AnsibleReconcileJobReconciler) ensureRuntimeConfigMap(ctx context.Conte
 		return fmt.Errorf("unable to fetch matching playbook: %w", err)
 	}
 
-	// TODO: Ensure the keys are absent when they are not needed
+	var cmData = make(map[string]string)
 	if playbook.Spec.Inline != nil {
 		// inline playbook, mount the strings as files
-		if err := r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+jobConfigNameSuffix, runtimeConfigPlaybookYAMLKey, playbook.Spec.Inline.Playbook, reconcileJob); err != nil {
-			return fmt.Errorf("error ensuring configmap %s for key %s: %w", reconcileJob.Name+jobConfigNameSuffix, runtimeConfigPlaybookYAMLKey, err)
-		}
-		if err := r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+jobConfigNameSuffix, runtimeConfigRequirementsYAMLKey, playbook.Spec.Inline.Requirements, reconcileJob); err != nil {
-			return fmt.Errorf("error ensuring configmap %s for key %s: %w", reconcileJob.Name+jobConfigNameSuffix, runtimeConfigRequirementsYAMLKey, err)
+		cmData = map[string]string{
+			runtimeConfigPlaybookYAMLKey:     playbook.Spec.Inline.Playbook,
+			runtimeConfigRequirementsYAMLKey: playbook.Spec.Inline.Requirements,
 		}
 	} else if playbook.Spec.Git != nil {
 		// git sourced playbook, pass the source and paths to the init container
-		if err := r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitRepoUrlKey, playbook.Spec.Git.Repo.URL, reconcileJob); err != nil {
-			return fmt.Errorf("error ensuring configmap %s for key %s: %w", reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitRepoUrlKey, err)
-		}
-		if err := r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitRefKey, playbook.Spec.Git.Repo.Ref, reconcileJob); err != nil {
-			return fmt.Errorf("error ensuring configmap %s for key %s: %w", reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitRefKey, err)
-		}
-		if err := r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitPlaybookPathKey, playbook.Spec.Git.PlaybookPath, reconcileJob); err != nil {
-			return fmt.Errorf("error ensuring configmap %s for key %s: %w", reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitPlaybookPathKey, err)
-		}
-		if err := r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitRequirementsPathKey, playbook.Spec.Git.RequirementsPath, reconcileJob); err != nil {
-			return fmt.Errorf("error ensuring configmap %s for key %s: %w", reconcileJob.Name+jobConfigNameSuffix, runtimeConfigGitRequirementsPathKey, err)
+		cmData = map[string]string{
+			runtimeConfigGitRepoUrlKey:          playbook.Spec.Git.Repo.URL,
+			runtimeConfigGitRefKey:              playbook.Spec.Git.Repo.Ref,
+			runtimeConfigGitPlaybookPathKey:     playbook.Spec.Git.PlaybookPath,
+			runtimeConfigGitRequirementsPathKey: playbook.Spec.Git.RequirementsPath,
 		}
 	} else {
 		return fmt.Errorf("error creating runtime configmap: neither git nor inline are non-nil. (API Spec violation?!)")
+	}
+	if err := r.ensureConfigmapWithData(ctx, reconcileJob.Name+jobConfigNameSuffix, cmData, reconcileJob); err != nil {
+		return fmt.Errorf("error ensuring configmap %s: %w", reconcileJob.Name+jobConfigNameSuffix, err)
 	}
 	return nil
 }
@@ -688,7 +685,7 @@ func (r *AnsibleReconcileJobReconciler) ensureKnownHostsSecretExists(ctx context
 		return fmt.Errorf("failed to get known hosts for reconcile job %s/%s: %w", reconcileJob.Namespace, reconcileJob.Name, err)
 	}
 	knownHostsString := strings.Join(knownHosts, "\n")
-	err = r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+knownHostsConfigMapNameSuffix, knownHostsConfigMapKey, knownHostsString, reconcileJob)
+	err = r.ensureConfigmapWithData(ctx, reconcileJob.Name+knownHostsConfigMapNameSuffix, map[string]string{knownHostsConfigMapKey: knownHostsString}, reconcileJob)
 	if err != nil {
 		return fmt.Errorf("failed to ensure known hosts configmap: %w", err)
 	}
@@ -751,7 +748,7 @@ func (r *AnsibleReconcileJobReconciler) ensureInventoryConfigmap(ctx context.Con
 	if err != nil {
 		return fmt.Errorf("failed to construct inventory content: %w", err)
 	}
-	err = r.ensureConfigmapWithKeyValue(ctx, reconcileJob.Name+inventoryConfigMapNameSuffix, inventoryConfigMapKey, inventoryString, reconcileJob)
+	err = r.ensureConfigmapWithData(ctx, reconcileJob.Name+inventoryConfigMapNameSuffix, map[string]string{inventoryConfigMapKey: inventoryString}, reconcileJob)
 	if err != nil {
 		return fmt.Errorf("failed to ensure inventory configmap: %w", err)
 	}
@@ -759,30 +756,26 @@ func (r *AnsibleReconcileJobReconciler) ensureInventoryConfigmap(ctx context.Con
 	return nil
 }
 
-func (r *AnsibleReconcileJobReconciler) ensureConfigmapWithKeyValue(ctx context.Context, name, key, value string, ansibleReconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
+func (r *AnsibleReconcileJobReconciler) ensureConfigmapWithData(ctx context.Context, name string, data map[string]string, ansibleReconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
 	cm := corev1.ConfigMap{}
 	err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: ansibleReconcileJob.Namespace}, &cm)
 	if err == nil {
-		// ensure we don't deref nil
-		if cm.Data == nil {
-			cm.Data = make(map[string]string)
-		}
-		// ConfigMap exists, check if the key exists and has the correct value
-		if existingValue, ok := cm.Data[key]; ok {
-			if existingValue == value {
-				// Key exists and has the correct value, nothing to do
-				return nil
-			}
-		}
 		// Check if we own the configmap, if not, return an error
 		if !isConfigmapOwnedByAnsibleReconcileJob(&cm, &ansibleReconcileJob) {
 			return fmt.Errorf("configmap %s exists but is not owned by AnsibleReconcileJob", name)
 		}
 
-		// Update the key with the new value
-		cm.Data[key] = value
-		if err := r.Update(ctx, &cm); err != nil {
-			return fmt.Errorf("failed to update configmap %s: %w", name, err)
+		// ConfigMap exists, check if the key exists and has the correct value
+		for key, value := range data {
+			existingValue, ok := cm.Data[key]
+			if !ok || existingValue != value {
+				// at least one value is not matching, update the CM and exit the loop
+				cm.Data = data
+				if err := r.Update(ctx, &cm); err != nil {
+					return fmt.Errorf("failed to update configmap %s: %w", name, err)
+				}
+				break
+			}
 		}
 		return nil
 	}
@@ -795,8 +788,7 @@ func (r *AnsibleReconcileJobReconciler) ensureConfigmapWithKeyValue(ctx context.
 		Name:      name,
 		Namespace: ansibleReconcileJob.Namespace,
 	}
-	cm.Data = make(map[string]string)
-	cm.Data[key] = value
+	cm.Data = data
 	if err := ctrl.SetControllerReference(&ansibleReconcileJob, &cm, r.Scheme); err != nil {
 		return fmt.Errorf("failed to set owner reference for configmap %s: %w", name, err)
 	}
