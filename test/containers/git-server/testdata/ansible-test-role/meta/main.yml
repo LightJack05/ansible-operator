@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: test_role
+  author: LightJack05
+  description: Creates a file with specified content at a specified location
+  license: MIT
+  min_ansible_version: "2.1"
+  platforms:
+    - name: EL
+      versions:
+        - all
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+
+dependencies: []

@@ -6,7 +6,6 @@ apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsibleGroup
 metadata:
   name: group-web-tier
-  namespace: ansible-operator-system
 spec:
   ansibleName: web_tier
   hosts:
@@ -23,14 +22,14 @@ apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsibleGroup
 metadata:
   name: group-databases
-  namespace: ansible-operator-system
 spec:
   ansibleName: databases
   hosts:
     - name: ssh-node-3
   groups: []
   groupVars: |
-    db_engine: postgres
+    content: "Hello world!"
+    location: /tmp/test_file.txt
 ---
 # group-production: nested parent group.
 # No direct hosts; aggregates the two healthy leaf groups above. Should be
@@ -39,7 +38,6 @@ apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsibleGroup
 metadata:
   name: group-production
-  namespace: ansible-operator-system
 spec:
   ansibleName: production
   hosts: []
@@ -56,7 +54,6 @@ apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsibleGroup
 metadata:
   name: group-all
-  namespace: ansible-operator-system
 spec:
   ansibleName: all_managed
   hosts:
@@ -64,51 +61,3 @@ spec:
   groups:
     - name: group-production
   groupVars: ""
----
-# group-missing-host: ERROR STATE (invalid references).
-# ssh-node-99 does not exist, so the reconciler reports a missing host and sets
-# ReferencesValid=False / Ready=False with reason "InvalidReferences".
-apiVersion: ansible-operator.lightjack.de/v1alpha1
-kind: AnsibleGroup
-metadata:
-  name: group-missing-host
-  namespace: ansible-operator-system
-spec:
-  ansibleName: broken_hosts
-  hosts:
-    - name: ssh-node-1
-    - name: ssh-node-99
-  groups: []
-  groupVars: |
-    note: references a host that does not exist
----
-# group-missing-subgroup: ERROR STATE (invalid references).
-# nonexistent-subgroup does not exist, so the reconciler reports a missing
-# subgroup and sets ReferencesValid=False / Ready=False.
-apiVersion: ansible-operator.lightjack.de/v1alpha1
-kind: AnsibleGroup
-metadata:
-  name: group-missing-subgroup
-  namespace: ansible-operator-system
-spec:
-  ansibleName: broken_subgroups
-  hosts:
-    - name: ssh-node-2
-  groups:
-    - name: nonexistent-subgroup
-  groupVars: |
-    note: references a subgroup that does not exist
----
-# broken master group
-apiVersion: ansible-operator.lightjack.de/v1alpha1
-kind: AnsibleGroup
-metadata:
-  name: group-missing-umbrella-group
-  namespace: ansible-operator-system
-spec:
-  ansibleName: broken_subgroups
-  hosts: []
-  groups:
-    - name: group-missing-subgroup
-  groupVars: |
-    note: references a subgroup that does not exist

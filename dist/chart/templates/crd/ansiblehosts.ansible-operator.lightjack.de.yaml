@@ -59,7 +59,6 @@ spec:
                   port:
                     default: 22
                     description: port is the SSH port number.
-                    format: int32
                     maximum: 65535
                     minimum: 1
                     type: integer

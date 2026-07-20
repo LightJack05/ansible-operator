@@ -1,0 +1,24 @@
+- name: create file with group vars
+  hosts: databases
+  become: true
+
+  roles:
+    - role: ansible_test_role
+
+- name: create file with inline vars
+  hosts: ssh-node-1
+  become: true
+  roles:
+    - role: ansible_test_role
+      vars:
+        content: "Hello world!"
+        location: /test_file_inline.txt
+
+- name: create file with host vars and inline task
+  hosts: ssh-node-2
+  become: true
+  tasks:
+    - name: Create file
+      ansible.builtin.copy:
+        content: "{{ content }}"
+        dest: "{{ location }}"

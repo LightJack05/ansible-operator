@@ -1,0 +1,21 @@
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleReconcileJob
+metadata:
+  name: inline-reconcile-job
+spec:
+  schedule: "0 0 * * *"
+  playbookRef:
+    # ref to a playbook in the same namespace
+    # host selection is handled via the inventory, and the group referenced in the playbook
+    name: inline-playbook
+---
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleReconcileJob
+metadata:
+  name: git-reconcile-job
+spec:
+  schedule: "0 0 * * *"
+  playbookRef:
+    # ref to a playbook in the same namespace
+    # host selection is handled via the inventory, and the group referenced in the playbook
+    name: http-git-playbook

@@ -1,0 +1,44 @@
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsiblePlaybook
+metadata:
+  name: inline-playbook
+spec:
+  inline:
+    requirements: |
+      roles:
+        - name: geerlingguy.ntp
+      collections:
+        - name: ansible.posix
+    playbook: |
+      - name: Test install flow
+        hosts: web_tier
+        become: true
+
+        roles:
+          - geerlingguy.ntp
+
+        tasks:
+          - name: Set a sysctl value (ansible.posix)
+            ansible.posix.sysctl:
+              name: vm.swappiness
+              value: '10'
+              state: present
+
+          - name: Tweak login banner perms (ansible.posix)
+            ansible.posix.mount:
+              path: /mnt/testtmp
+              src: tmpfs
+              fstype: tmpfs
+              opts: size=16m
+              state: mounted
+---
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsiblePlaybook
+metadata:
+  name: http-git-playbook
+spec:
+  git:
+    repo:
+      url: http://git-server.default.svc.cluster.local/git/playbook-repo.git
+    playbookPath: playbook.yml
+    requirementsPath: dir/requirements.yml

@@ -30,6 +30,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -204,6 +205,41 @@ func createSSHHosts(namespace string) {
 	}
 }
 
+// catFileOnSSHNode returns the contents of a file inside the given SSH node
+// by exec'ing cat in its pod. Only stdout is returned, so kubectl warnings on
+// stderr cannot end up in the file contents.
+func catFileOnSSHNode(namespace string, nodeId int, filePath string) string {
+	GinkgoHelper()
+	cmd := exec.Command("kubectl", "exec", fmt.Sprintf("deployments/ssh-node-%d", nodeId),
+		"-n", namespace, "--", "cat", filePath)
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	Expect(err).NotTo(HaveOccurred(),
+		"Failed to cat %q on ssh-node-%d: %s", filePath, nodeId, stderr.String())
+	return stdout.String()
+}
+
+// fileExistsOnSSHNode reports whether a file exists inside the given SSH node
+// by exec'ing stat in its pod. Any failure other than stat reporting a missing
+// file (e.g. kubectl cannot reach the pod) fails the test, since that is not
+// the same as the file being absent.
+func fileExistsOnSSHNode(namespace string, nodeId int, filePath string) bool {
+	GinkgoHelper()
+	cmd := exec.Command("kubectl", "exec", fmt.Sprintf("deployments/ssh-node-%d", nodeId),
+		"-n", namespace, "--", "stat", filePath)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		return true
+	}
+	Expect(stderr.String()).To(ContainSubstring("No such file or directory"),
+		"Failed to check for %q on ssh-node-%d: %s", filePath, nodeId, stderr.String())
+	return false
+}
+
 func createNamespace(name string) {
 	GinkgoHelper()
 	cmd := exec.Command("kubectl", "create", "namespace", name)
@@ -234,6 +270,20 @@ spec:
         ports:
         - name: ssh
           containerPort: 22
+        # Mount the public key from the credentials secret where the image's
+        # entrypoint expects it, so the operator's private key is accepted for
+        # SSH. The secret is optional: tests that never create it get a node
+        # without an authorized key, as before.
+        volumeMounts:
+        - name: ssh-credentials
+          mountPath: /tmp/authorized_keys.pub
+          subPath: ssh_key.pub
+          readOnly: true
+      volumes:
+      - name: ssh-credentials
+        secret:
+          secretName: ssh-node-%[2]d-credentials
+          optional: true
 ---
 apiVersion: v1
 kind: Service
@@ -251,12 +301,93 @@ spec:
 `, nodeNamespace, nodeId)
 }
 
-func createSSHKeySecret(namespace, secretName string) {
-	GinkgoHelper()
-	privateKey := generateSSHPrivateKey()
-	applySSHKeySecret(namespace, secretName, privateKey)
+// templateGitServer renders a Deployment and Service for the git server image,
+// which serves the baked-in test repositories over HTTP and SSH.
+func templateGitServer(namespace string) string {
+	return fmt.Sprintf(`
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: git-server
+  namespace: %[1]s
+spec:
+  selector:
+    matchLabels:
+      app: git-server
+  template:
+    metadata:
+      labels:
+        app: git-server
+    spec:
+      containers:
+      - name: git-server
+        image: %[2]s
+        imagePullPolicy: Never
+        ports:
+        - name: ssh
+          containerPort: 22
+        - name: http
+          containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: git-server
+  namespace: %[1]s
+spec:
+  selector:
+    app: git-server
+  ports:
+  - name: ssh
+    port: 22
+    targetPort: 22
+  - name: http
+    port: 80
+    targetPort: 80
+---
+`, namespace, gitServerImageName)
 }
 
+// deployGitServer deploys the git server serving the baked-in test
+// repositories and waits for it to become available. It lives in the default
+// namespace for the whole suite, so playbooks can be fetched from
+// git-server.default.svc.cluster.local during tests.
+func deployGitServer() {
+	GinkgoHelper()
+	applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+	applyCmd.Stdin = strings.NewReader(templateGitServer(gitServerNamespace))
+	_, err := utils.Run(applyCmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create git server resources")
+
+	cmd := exec.Command("kubectl", "wait", "deployments/git-server",
+		"--namespace", gitServerNamespace,
+		"--for=condition=Available",
+		"--timeout=5m",
+	)
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Git server deployment did not become available")
+}
+
+// undeployGitServer removes the git server resources created by
+// deployGitServer. Errors are ignored so suite teardown proceeds even if the
+// resources are already gone.
+func undeployGitServer() {
+	cmd := exec.Command("kubectl", "delete", "-f", "-", "--ignore-not-found=true")
+	cmd.Stdin = strings.NewReader(templateGitServer(gitServerNamespace))
+	_, _ = utils.Run(cmd)
+}
+
+// createSSHKeySecret generates a fresh SSH key pair and stores it in a
+// secret: ssh_key (private, read by the operator) and ssh_key.pub (public,
+// mounted into the SSH node pods as an authorized key).
+func createSSHKeySecret(namespace, secretName string) {
+	GinkgoHelper()
+	privateKey, publicKey := generateSSHKeyPair()
+	applySSHKeyPairSecret(namespace, secretName, privateKey, publicKey)
+}
+
+// applySSHKeySecret stores a private key only, with no matching public key.
+// Useful for tests that need a broken or unusable credential secret.
 func applySSHKeySecret(namespace, secretName, privateKey string) {
 	GinkgoHelper()
 	secretManifest := fmt.Sprintf(`
@@ -276,22 +407,47 @@ data:
 	Expect(err).NotTo(HaveOccurred(), "Failed to create SSH key secret")
 }
 
-func generateSSHPrivateKey() string {
+func applySSHKeyPairSecret(namespace, secretName, privateKey, publicKey string) {
 	GinkgoHelper()
-	// Generate a new SSH private key using the ssh-keygen command
+	secretManifest := fmt.Sprintf(`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+type: Opaque
+data:
+  ssh_key: %s
+  ssh_key.pub: %s
+`, secretName, namespace,
+		base64.StdEncoding.EncodeToString([]byte(privateKey)),
+		base64.StdEncoding.EncodeToString([]byte(publicKey)))
+
+	applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+	applyCmd.Stdin = strings.NewReader(secretManifest)
+	_, err := utils.Run(applyCmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create SSH key pair secret")
+}
+
+func generateSSHKeyPair() (privateKey, publicKey string) {
+	GinkgoHelper()
+	// Generate a new SSH key pair using the ssh-keygen command
 	cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-b", "2048", "-f", "/tmp/temp_ssh_key", "-N", "")
 	_, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred(), "Failed to generate SSH private key")
+	Expect(err).NotTo(HaveOccurred(), "Failed to generate SSH key pair")
 
-	// Read the generated private key from the file
 	privateKeyBytes, err := os.ReadFile("/tmp/temp_ssh_key")
 	Expect(err).NotTo(HaveOccurred(), "Failed to read generated SSH private key")
+	publicKeyBytes, err := os.ReadFile("/tmp/temp_ssh_key.pub")
+	Expect(err).NotTo(HaveOccurred(), "Failed to read generated SSH public key")
 
-	// Clean up the temporary key file
+	// Clean up the temporary key files
 	err = os.Remove("/tmp/temp_ssh_key")
 	Expect(err).NotTo(HaveOccurred(), "Failed to remove temporary SSH key file")
+	err = os.Remove("/tmp/temp_ssh_key.pub")
+	Expect(err).NotTo(HaveOccurred(), "Failed to remove temporary SSH public key file")
 
-	return string(privateKeyBytes)
+	return string(privateKeyBytes), string(publicKeyBytes)
 }
 
 func createAnsibleGroup(name, namespace, groupVars string, hostNames, groupnames []string) {
@@ -343,4 +499,138 @@ spec:
 	output := renderedGroup.String()
 	fmt.Println(output)
 	return output
+}
+
+func deleteAnsibleGroup(name, namespace string) {
+	GinkgoHelper()
+	cmd := exec.Command("kubectl", "delete", "ansiblegroup", name, "-n", namespace)
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to delete AnsibleGroup")
+}
+
+func waitForAnsibleHostReady(name, namespace string) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "ansiblehost", name,
+			"-n", namespace,
+			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("True"), fmt.Sprintf("AnsibleHost %s not ready", name))
+	}, 3*time.Minute, time.Second).Should(Succeed())
+}
+
+func createInlineAnsiblePlaybook(name, namespace, playbook, requirements string) {
+	GinkgoHelper()
+	applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+	applyCmd.Stdin = strings.NewReader(templateInlineAnsiblePlaybook(name, namespace, playbook, requirements))
+	_, err := utils.Run(applyCmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create AnsiblePlaybook")
+}
+
+func templateInlineAnsiblePlaybook(name, namespace, playbook, requirements string) string {
+	manifest := fmt.Sprintf(
+		`
+---
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsiblePlaybook
+metadata:
+  name: %[1]s
+  namespace: %[2]s
+spec:
+  inline:
+    playbook: |
+%[3]s
+`,
+		name, namespace, indentLines(playbook, 6))
+	if requirements != "" {
+		manifest += fmt.Sprintf("    requirements: |\n%s\n", indentLines(requirements, 6))
+	}
+	return manifest
+}
+
+func deleteAnsiblePlaybook(name, namespace string) {
+	GinkgoHelper()
+	cmd := exec.Command("kubectl", "delete", "ansibleplaybook", name, "-n", namespace)
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to delete AnsiblePlaybook")
+}
+
+func createGitAnsiblePlaybook(name, namespace, repoURL, ref, playbookPath, requirementsPath string) {
+	GinkgoHelper()
+	applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+	applyCmd.Stdin = strings.NewReader(templateGitAnsiblePlaybook(name, namespace, repoURL, ref, playbookPath, requirementsPath))
+	_, err := utils.Run(applyCmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create AnsiblePlaybook")
+}
+
+func templateGitAnsiblePlaybook(name, namespace, repoURL, ref, playbookPath, requirementsPath string) string {
+	manifest := fmt.Sprintf(
+		`
+---
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsiblePlaybook
+metadata:
+  name: %[1]s
+  namespace: %[2]s
+spec:
+  git:
+    repo:
+      url: %[3]s
+`,
+		name, namespace, repoURL)
+	if ref != "" {
+		manifest += fmt.Sprintf("      ref: %s\n", ref)
+	}
+	manifest += fmt.Sprintf("    playbookPath: %s\n", playbookPath)
+	if requirementsPath != "" {
+		manifest += fmt.Sprintf("    requirementsPath: %s\n", requirementsPath)
+	}
+	return manifest
+}
+
+// indentLines prefixes every non-empty line with n spaces so multi-line
+// content can be embedded in a YAML block scalar.
+func indentLines(s string, n int) string {
+	pad := strings.Repeat(" ", n)
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	for i, line := range lines {
+		if line != "" {
+			lines[i] = pad + line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func createAnsibleReconcileJob(name, namespace, schedule, playbookName string) {
+	GinkgoHelper()
+	applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+	applyCmd.Stdin = strings.NewReader(templateAnsibleReconcileJob(name, namespace, schedule, playbookName))
+	_, err := utils.Run(applyCmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create AnsibleReconcileJob")
+}
+
+func deleteAnsibleReconcileJob(name, namespace string) {
+	GinkgoHelper()
+	cmd := exec.Command("kubectl", "delete", "ansiblereconcilejob", name, "-n", namespace)
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to delete AnsibleReconcileJob")
+}
+
+func templateAnsibleReconcileJob(name, namespace, schedule, playbookName string) string {
+	return fmt.Sprintf(
+		`
+---
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleReconcileJob
+metadata:
+  name: %[1]s
+  namespace: %[2]s
+spec:
+  schedule: "%[3]s"
+  playbookRef:
+    name: %[4]s
+---
+`,
+		name, namespace, schedule, playbookName)
 }

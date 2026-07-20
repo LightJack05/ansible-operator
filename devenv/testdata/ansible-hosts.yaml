@@ -3,7 +3,6 @@ apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsibleHost
 metadata:
   name: ssh-node-1
-  namespace: ansible-operator-system
 spec:
   ansibleName: ssh-node-1
   connection:
@@ -22,7 +21,6 @@ apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsibleHost
 metadata:
   name: ssh-node-2
-  namespace: ansible-operator-system
 spec:
   ansibleName: ssh-node-2
   connection:
@@ -36,12 +34,14 @@ spec:
     ignoreHostKey: false
   privilege:
     become: true
+  hostVars: |
+    content: "fun content"
+    location: /test-file.txt
 ---
 apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsibleHost
 metadata:
   name: ssh-node-3
-  namespace: ansible-operator-system
 spec:
   ansibleName: ssh-node-3
   connection:
@@ -52,6 +52,6 @@ spec:
       name: ansible-operator-hosts-private-key
     sshHostKeySecretRef:
       name: ssh-node-3-host-key
-    ignoreHostKey: true
+    ignoreHostKey: false
   privilege:
     become: true

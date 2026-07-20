@@ -40,7 +40,11 @@ var (
 )
 
 const (
-	sshNodeImageName = "localhost/ssh-node-image:latest"
+	sshNodeImageName   = "localhost/ssh-node-image:latest"
+	gitServerImageName = "localhost/git-server-image:latest"
+	// gitServerNamespace must stay "default": the repos baked into the git
+	// server image reference git-server.default.svc.cluster.local.
+	gitServerNamespace = "default"
 )
 
 // TestE2E runs the e2e test suite to validate the solution in an isolated environment.
@@ -66,6 +70,11 @@ var _ = BeforeSuite(func() {
 	_, err = utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build SSH node image")
 
+	By("building the git server image")
+	cmd = exec.Command("make", "git-server-image", fmt.Sprintf("GIT_SERVER_IMG=%s", gitServerImageName))
+	_, err = utils.Run(cmd)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build git server image")
+
 	// TODO(user): If you want to change the e2e test vendor from Kind,
 	// ensure the image is built and available, then remove the following block.
 	By("loading the images into Kind")
@@ -73,11 +82,19 @@ var _ = BeforeSuite(func() {
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
 	err = utils.LoadImageToKindClusterWithName(sshNodeImageName)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the ssh node image into Kind")
+	err = utils.LoadImageToKindClusterWithName(gitServerImageName)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the git server image into Kind")
+
+	By("deploying the git server into the cluster")
+	deployGitServer()
 
 	setupCertManager()
 })
 
 var _ = AfterSuite(func() {
+	By("removing the git server from the cluster")
+	undeployGitServer()
+
 	teardownCertManager()
 })
 
