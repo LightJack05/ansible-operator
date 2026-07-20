@@ -30,6 +30,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -498,6 +499,25 @@ spec:
 	output := renderedGroup.String()
 	fmt.Println(output)
 	return output
+}
+
+func deleteAnsibleGroup(name, namespace string) {
+	GinkgoHelper()
+	cmd := exec.Command("kubectl", "delete", "ansiblegroup", name, "-n", namespace)
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to delete AnsibleGroup")
+}
+
+func waitForAnsibleHostReady(name, namespace string) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "ansiblehost", name,
+			"-n", namespace,
+			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("True"), fmt.Sprintf("AnsibleHost %s not ready", name))
+	}, 3*time.Minute, time.Second).Should(Succeed())
 }
 
 func createInlineAnsiblePlaybook(name, namespace, playbook, requirements string) {
