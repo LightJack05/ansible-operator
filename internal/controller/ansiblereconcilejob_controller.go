@@ -651,7 +651,7 @@ func (r *AnsibleReconcileJobReconciler) ensureRuntimeConfigMap(ctx context.Conte
 		return fmt.Errorf("unable to fetch matching playbook: %w", err)
 	}
 
-	var cmData = make(map[string]string)
+	var cmData map[string]string
 	if playbook.Spec.Inline != nil {
 		// inline playbook, mount the strings as files
 		cmData = map[string]string{
@@ -765,16 +765,12 @@ func (r *AnsibleReconcileJobReconciler) ensureConfigmapWithData(ctx context.Cont
 			return fmt.Errorf("configmap %s exists but is not owned by AnsibleReconcileJob", name)
 		}
 
-		// ConfigMap exists, check if the key exists and has the correct value
-		for key, value := range data {
-			existingValue, ok := cm.Data[key]
-			if !ok || existingValue != value {
-				// at least one value is not matching, update the CM and exit the loop
-				cm.Data = data
-				if err := r.Update(ctx, &cm); err != nil {
-					return fmt.Errorf("failed to update configmap %s: %w", name, err)
-				}
-				break
+		// ConfigMap exists, replace its data if it differs from the desired
+		// state (including stale keys that are no longer wanted)
+		if !maps.Equal(cm.Data, data) {
+			cm.Data = data
+			if err := r.Update(ctx, &cm); err != nil {
+				return fmt.Errorf("failed to update configmap %s: %w", name, err)
 			}
 		}
 		return nil
