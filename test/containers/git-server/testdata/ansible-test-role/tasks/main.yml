@@ -1,0 +1,5 @@
+---
+- name: Create file with specified content at specified location
+  ansible.builtin.copy:
+    content: "{{ content }}"
+    dest: "{{ location }}"

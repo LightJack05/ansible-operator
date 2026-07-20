@@ -336,6 +336,12 @@ SSH_NODE_IMG ?= localhost/ssh-node-image:latest
 ssh-node-image:
 	docker build devenv/ssh-node/ -t $(SSH_NODE_IMG)
 
+GIT_SERVER_IMG ?= localhost/git-server-image:latest
+
+.PHONY: git-server-image
+git-server-image:
+	docker build test/containers/git-server/ -t $(GIT_SERVER_IMG)
+
 # Dev Env
 .PHONY: devenv-up devenv-down reset-devenv
 devenv-up:

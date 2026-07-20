@@ -286,6 +286,82 @@ spec:
 `, nodeNamespace, nodeId)
 }
 
+// templateGitServer renders a Deployment and Service for the git server image,
+// which serves the baked-in test repositories over HTTP and SSH.
+func templateGitServer(namespace string) string {
+	return fmt.Sprintf(`
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: git-server
+  namespace: %[1]s
+spec:
+  selector:
+    matchLabels:
+      app: git-server
+  template:
+    metadata:
+      labels:
+        app: git-server
+    spec:
+      containers:
+      - name: git-server
+        image: %[2]s
+        imagePullPolicy: Never
+        ports:
+        - name: ssh
+          containerPort: 22
+        - name: http
+          containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: git-server
+  namespace: %[1]s
+spec:
+  selector:
+    app: git-server
+  ports:
+  - name: ssh
+    port: 22
+    targetPort: 22
+  - name: http
+    port: 80
+    targetPort: 80
+---
+`, namespace, gitServerImageName)
+}
+
+// deployGitServer deploys the git server serving the baked-in test
+// repositories and waits for it to become available. It lives in the default
+// namespace for the whole suite, so playbooks can be fetched from
+// git-server.default.svc.cluster.local during tests.
+func deployGitServer() {
+	GinkgoHelper()
+	applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+	applyCmd.Stdin = strings.NewReader(templateGitServer(gitServerNamespace))
+	_, err := utils.Run(applyCmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create git server resources")
+
+	cmd := exec.Command("kubectl", "wait", "deployments/git-server",
+		"--namespace", gitServerNamespace,
+		"--for=condition=Available",
+		"--timeout=5m",
+	)
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Git server deployment did not become available")
+}
+
+// undeployGitServer removes the git server resources created by
+// deployGitServer. Errors are ignored so suite teardown proceeds even if the
+// resources are already gone.
+func undeployGitServer() {
+	cmd := exec.Command("kubectl", "delete", "-f", "-", "--ignore-not-found=true")
+	cmd.Stdin = strings.NewReader(templateGitServer(gitServerNamespace))
+	_, _ = utils.Run(cmd)
+}
+
 func createSSHKeySecret(namespace, secretName string) {
 	GinkgoHelper()
 	privateKey := generateSSHPrivateKey()

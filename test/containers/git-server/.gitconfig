@@ -1,0 +1,5 @@
+[user]
+	email = noone@invalid.com
+	name = noone
+[init]
+	defaultBranch = main
