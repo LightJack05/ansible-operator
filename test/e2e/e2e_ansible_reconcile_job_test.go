@@ -145,6 +145,7 @@ func AnsibleReconcileJobTests() {
 				It("should successfully apply the playbook", func() {
 					By("creating the AnsibleReconcileJob")
 					createAnsibleReconcileJob("reconcile-job", testResourceNamespace, "* * * * *", "inline-ansible-playbook")
+					waitForAnsibleReconcileJobConditionStatus("reconcile-job", testResourceNamespace, "Ready", "True")
 					By("Waiting for the test files to be created")
 					eventuallyFileShouldExist(testResourceNamespace, 0, "/test_file_inline_group.txt")
 					eventuallyFileShouldExist(testResourceNamespace, 1, "/test_file_inline_host.txt")
@@ -152,12 +153,25 @@ func AnsibleReconcileJobTests() {
 					eventuallyFileShouldContain(testResourceNamespace, 0, "/test_file_inline_group.txt", "Hello, group!")
 					eventuallyFileShouldContain(testResourceNamespace, 1, "/test_file_inline_host.txt", "Hello, host!")
 					eventuallyFileShouldContain(testResourceNamespace, 2, "/test_file_inline_host.txt", "Hello, host!")
+					By("checking whether the status is set to successful")
+					waitForAnsibleReconcileJobConditionStatus("reconcile-job", testResourceNamespace, "Successful", "True")
+				})
+				It("should clean up any cronjobs created when deleted", func() {
+					By("creating the AnsibleReconcileJob")
+					createAnsibleReconcileJob("reconcile-job", testResourceNamespace, "* * * * *", "inline-ansible-playbook")
+					By("waiting for the cronjob to be created")
+					eventuallyCronjobShouldExist("reconcile-job", testResourceNamespace)
+					By("deleting the AnsibleReconcileJob")
+					deleteAnsibleReconcileJob("reconcile-job", testResourceNamespace)
+					By("waiting for the cronjob to be garbage collected")
+					eventuallyCronjobShouldNotExist("reconcile-job", testResourceNamespace)
 				})
 			})
 			Context("when using a git playbook", func() {
 				It("should successfully apply the playbook", func() {
 					By("creating the AnsibleReconcileJob")
 					createAnsibleReconcileJob("reconcile-job", testResourceNamespace, "* * * * *", "git-ansible-playbook")
+					waitForAnsibleReconcileJobConditionStatus("reconcile-job", testResourceNamespace, "Ready", "True")
 					By("Waiting for the test files to be created")
 					eventuallyFileShouldExist(testResourceNamespace, 0, "/test_file_group.txt")
 					eventuallyFileShouldExist(testResourceNamespace, 1, "/test_file_host.txt")
@@ -165,12 +179,54 @@ func AnsibleReconcileJobTests() {
 					eventuallyFileShouldContain(testResourceNamespace, 0, "/test_file_group.txt", "Hello, group!")
 					eventuallyFileShouldContain(testResourceNamespace, 1, "/test_file_host.txt", "Hello, host!")
 					eventuallyFileShouldContain(testResourceNamespace, 2, "/test_file_host.txt", "Hello, host!")
+					By("checking whether the status is set to successful")
+					waitForAnsibleReconcileJobConditionStatus("reconcile-job", testResourceNamespace, "Successful", "True")
 				})
 			})
 		})
 		Context("when created with invalid inventory", func() {
+			It("should report not ready if there is an unresolved reference", func() {
+				By("Creating an unresolving ansible group")
+				createAnsibleGroup("invalid", testResourceNamespace, "", []string{"absent"}, nil)
+				By("creating the ansible reconcile job")
+				createAnsibleReconcileJob("reconcile-job", testResourceNamespace, "* * * * *", "git-ansible-playbook")
+				By("Waiting for the ready status on the resource to become false")
+				waitForAnsibleReconcileJobNotReady("reconcile-job", testResourceNamespace)
+			})
+			It("should pause the cronjob created when the inventory becomes invalid after it is created.", func() {
+				By("creating the ansible reconcile job with a valid inventory")
+				createAnsibleReconcileJob("reconcile-job", testResourceNamespace, "* * * * *", "git-ansible-playbook")
+				By("waiting for the cronjob to be created and not suspended")
+				eventuallyCronjobSuspendShouldBe("reconcile-job", testResourceNamespace, false)
+				By("making the inventory invalid by creating an unresolving ansible group")
+				createAnsibleGroup("invalid", testResourceNamespace, "", []string{"absent"}, nil)
+				By("waiting for the ready status on the resource to become false")
+				waitForAnsibleReconcileJobNotReady("reconcile-job", testResourceNamespace)
+				By("waiting for the cronjob to be suspended")
+				eventuallyCronjobSuspendShouldBe("reconcile-job", testResourceNamespace, true)
+			})
 		})
 		Context("when created with failing playbook", func() {
+			It("should eventually report the success status as false", func() {
+				By("creating an inline ansible playbook that always fails")
+				failingPlaybook := `- name: always fail
+  hosts: ansible-host-0
+  tasks:
+    - name: Fail
+      ansible.builtin.fail:
+        msg: This playbook is expected to fail
+`
+				createInlineAnsiblePlaybook(
+					"failing-ansible-playbook",
+					testResourceNamespace,
+					failingPlaybook,
+					"",
+				)
+				By("creating the AnsibleReconcileJob")
+				createAnsibleReconcileJob("reconcile-job", testResourceNamespace, "* * * * *", "failing-ansible-playbook")
+				By("waiting for the Successful condition on the resource to become false")
+				waitForAnsibleReconcileJobConditionStatus("reconcile-job", testResourceNamespace, "Successful", "False")
+			})
 		})
 	})
 }
@@ -185,4 +241,56 @@ func eventuallyFileShouldExist(namespace string, node int, filename string) {
 	Eventually(func() bool {
 		return fileExistsOnSSHNode(namespace, node, filename)
 	}).WithTimeout(3 * time.Minute).Should(Equal(true))
+}
+
+func waitForAnsibleReconcileJobNotReady(name, namespace string) {
+	GinkgoHelper()
+	waitForAnsibleReconcileJobConditionStatus(name, namespace, "Ready", "False")
+}
+
+func waitForAnsibleReconcileJobConditionStatus(name, namespace, conditionType, status string) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "ansiblereconcilejob", name,
+			"-n", namespace,
+			"-o", fmt.Sprintf("jsonpath={.status.conditions[?(@.type=='%s')].status}", conditionType))
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal(status),
+			fmt.Sprintf("AnsibleReconcileJob %s condition %s did not become %s", name, conditionType, status))
+	}, 3*time.Minute, time.Second).Should(Succeed())
+}
+
+func eventuallyCronjobShouldExist(name, namespace string) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "cronjob", name, "-n", namespace,
+			"-o", "jsonpath={.metadata.name}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal(name))
+	}, 3*time.Minute, time.Second).Should(Succeed())
+}
+
+func eventuallyCronjobShouldNotExist(name, namespace string) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "cronjob", name, "-n", namespace,
+			"--ignore-not-found", "-o", "jsonpath={.metadata.name}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(BeEmpty(), fmt.Sprintf("cronjob %s still exists", name))
+	}, 3*time.Minute, time.Second).Should(Succeed())
+}
+
+func eventuallyCronjobSuspendShouldBe(name, namespace string, suspended bool) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "cronjob", name, "-n", namespace,
+			"-o", "jsonpath={.spec.suspend}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal(fmt.Sprintf("%v", suspended)),
+			fmt.Sprintf("cronjob %s suspend flag did not become %v", name, suspended))
+	}, 3*time.Minute, time.Second).Should(Succeed())
 }
