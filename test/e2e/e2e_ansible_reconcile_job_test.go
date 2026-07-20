@@ -35,11 +35,16 @@ func AnsibleReconcileJobTests() {
 		var testResourceNamespace string
 		BeforeEach(func() {
 			testResourceNamespace = createRandomTestNamespace()
+			By("Creating SSH credential secrets")
+			// Created before the SSH nodes so the public keys are in place
+			// when the pods mount them as authorized keys.
+			for i := range sshNodeCount {
+				createSSHKeySecret(testResourceNamespace, fmt.Sprintf("ssh-node-%d-credentials", i))
+			}
 			By("Setting up 3 SSH hosts...")
 			createSSHHosts(testResourceNamespace)
 			By("Creating matching AnsibleHost resources")
 			for i := range sshNodeCount {
-				createSSHKeySecret(testResourceNamespace, fmt.Sprintf("ssh-node-%d-credentials", i))
 				createValidAnsibleHostWithVars(
 					fmt.Sprintf("ansible-host-%d", i),
 					testResourceNamespace,

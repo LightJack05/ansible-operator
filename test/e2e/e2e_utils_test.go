@@ -269,6 +269,20 @@ spec:
         ports:
         - name: ssh
           containerPort: 22
+        # Mount the public key from the credentials secret where the image's
+        # entrypoint expects it, so the operator's private key is accepted for
+        # SSH. The secret is optional: tests that never create it get a node
+        # without an authorized key, as before.
+        volumeMounts:
+        - name: ssh-credentials
+          mountPath: /tmp/authorized_keys.pub
+          subPath: ssh_key.pub
+          readOnly: true
+      volumes:
+      - name: ssh-credentials
+        secret:
+          secretName: ssh-node-%[2]d-credentials
+          optional: true
 ---
 apiVersion: v1
 kind: Service
@@ -362,12 +376,17 @@ func undeployGitServer() {
 	_, _ = utils.Run(cmd)
 }
 
+// createSSHKeySecret generates a fresh SSH key pair and stores it in a
+// secret: ssh_key (private, read by the operator) and ssh_key.pub (public,
+// mounted into the SSH node pods as an authorized key).
 func createSSHKeySecret(namespace, secretName string) {
 	GinkgoHelper()
-	privateKey := generateSSHPrivateKey()
-	applySSHKeySecret(namespace, secretName, privateKey)
+	privateKey, publicKey := generateSSHKeyPair()
+	applySSHKeyPairSecret(namespace, secretName, privateKey, publicKey)
 }
 
+// applySSHKeySecret stores a private key only, with no matching public key.
+// Useful for tests that need a broken or unusable credential secret.
 func applySSHKeySecret(namespace, secretName, privateKey string) {
 	GinkgoHelper()
 	secretManifest := fmt.Sprintf(`
@@ -387,22 +406,47 @@ data:
 	Expect(err).NotTo(HaveOccurred(), "Failed to create SSH key secret")
 }
 
-func generateSSHPrivateKey() string {
+func applySSHKeyPairSecret(namespace, secretName, privateKey, publicKey string) {
 	GinkgoHelper()
-	// Generate a new SSH private key using the ssh-keygen command
+	secretManifest := fmt.Sprintf(`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+type: Opaque
+data:
+  ssh_key: %s
+  ssh_key.pub: %s
+`, secretName, namespace,
+		base64.StdEncoding.EncodeToString([]byte(privateKey)),
+		base64.StdEncoding.EncodeToString([]byte(publicKey)))
+
+	applyCmd := exec.Command("kubectl", "apply", "-f", "-")
+	applyCmd.Stdin = strings.NewReader(secretManifest)
+	_, err := utils.Run(applyCmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create SSH key pair secret")
+}
+
+func generateSSHKeyPair() (privateKey, publicKey string) {
+	GinkgoHelper()
+	// Generate a new SSH key pair using the ssh-keygen command
 	cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-b", "2048", "-f", "/tmp/temp_ssh_key", "-N", "")
 	_, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred(), "Failed to generate SSH private key")
+	Expect(err).NotTo(HaveOccurred(), "Failed to generate SSH key pair")
 
-	// Read the generated private key from the file
 	privateKeyBytes, err := os.ReadFile("/tmp/temp_ssh_key")
 	Expect(err).NotTo(HaveOccurred(), "Failed to read generated SSH private key")
+	publicKeyBytes, err := os.ReadFile("/tmp/temp_ssh_key.pub")
+	Expect(err).NotTo(HaveOccurred(), "Failed to read generated SSH public key")
 
-	// Clean up the temporary key file
+	// Clean up the temporary key files
 	err = os.Remove("/tmp/temp_ssh_key")
 	Expect(err).NotTo(HaveOccurred(), "Failed to remove temporary SSH key file")
+	err = os.Remove("/tmp/temp_ssh_key.pub")
+	Expect(err).NotTo(HaveOccurred(), "Failed to remove temporary SSH public key file")
 
-	return string(privateKeyBytes)
+	return string(privateKeyBytes), string(publicKeyBytes)
 }
 
 func createAnsibleGroup(name, namespace, groupVars string, hostNames, groupnames []string) {
