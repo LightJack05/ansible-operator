@@ -49,49 +49,103 @@ const (
 
 // TestE2E runs the e2e test suite to validate the solution in an isolated environment.
 // The default setup requires Kind and CertManager.
+// Specs are designed to be independent, so the suite can run in parallel via
+// the ginkgo CLI (--procs); shared cluster fixtures are set up once below.
 //
 // To skip CertManager installation, set: CERT_MANAGER_INSTALL_SKIP=true
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
+	SetDefaultEventuallyTimeout(2 * time.Minute)
+	SetDefaultEventuallyPollingInterval(time.Second)
 	_, _ = fmt.Fprintf(GinkgoWriter, "Starting ansible-operator e2e test suite\n")
 	suiteConfig, reporterConfig := GinkgoConfiguration()
 	suiteConfig.Timeout = 30 * time.Minute
 	RunSpecs(t, "e2e suite", reporterConfig, suiteConfig)
 }
 
-var _ = BeforeSuite(func() {
+// The first function runs on parallel process 1 only; all other processes
+// block until it finishes, so the shared fixtures (images, git server,
+// CertManager, CRDs and the controller-manager) exist exactly once before any
+// spec runs.
+var _ = SynchronizedBeforeSuite(func() []byte {
 	By("building the manager image")
 	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", managerImage))
 	_, err := utils.Run(cmd)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
+	Expect(err).NotTo(HaveOccurred(), "Failed to build the manager image")
 
 	By("building the ssh server image")
 	cmd = exec.Command("make", "ssh-node-image", fmt.Sprintf("SSH_NODE_IMG=%s", sshNodeImageName))
 	_, err = utils.Run(cmd)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build SSH node image")
+	Expect(err).NotTo(HaveOccurred(), "Failed to build SSH node image")
 
 	By("building the git server image")
 	cmd = exec.Command("make", "git-server-image", fmt.Sprintf("GIT_SERVER_IMG=%s", gitServerImageName))
 	_, err = utils.Run(cmd)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build git server image")
+	Expect(err).NotTo(HaveOccurred(), "Failed to build git server image")
 
 	// TODO(user): If you want to change the e2e test vendor from Kind,
 	// ensure the image is built and available, then remove the following block.
 	By("loading the images into Kind")
 	err = utils.LoadImageToKindClusterWithName(managerImage)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
+	Expect(err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
 	err = utils.LoadImageToKindClusterWithName(sshNodeImageName)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the ssh node image into Kind")
+	Expect(err).NotTo(HaveOccurred(), "Failed to load the ssh node image into Kind")
 	err = utils.LoadImageToKindClusterWithName(gitServerImageName)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the git server image into Kind")
+	Expect(err).NotTo(HaveOccurred(), "Failed to load the git server image into Kind")
 
 	By("deploying the git server into the cluster")
 	deployGitServer()
 
 	setupCertManager()
-})
 
-var _ = AfterSuite(func() {
+	By("creating manager namespace")
+	cmd = exec.Command("kubectl", "create", "ns", namespace)
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
+
+	By("labeling the namespace to enforce the restricted security policy")
+	cmd = exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
+		"pod-security.kubernetes.io/enforce=restricted")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
+
+	By("installing CRDs")
+	cmd = exec.Command("make", "install")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
+
+	By("deploying the controller-manager")
+	cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", managerImage))
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+
+	By("waiting for the controller-manager to become available")
+	cmd = exec.Command("kubectl", "wait", "deployment",
+		"-l", "control-plane=controller-manager",
+		"-n", namespace,
+		"--for=condition=Available",
+		"--timeout=5m")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "controller-manager deployment did not become available")
+
+	return nil
+}, func(_ []byte) {})
+
+// Teardown of the shared fixtures runs on process 1 only, after all other
+// processes have finished their specs.
+var _ = SynchronizedAfterSuite(func() {}, func() {
+	By("undeploying the controller-manager")
+	cmd := exec.Command("make", "undeploy")
+	_, _ = utils.Run(cmd)
+
+	By("uninstalling CRDs")
+	cmd = exec.Command("make", "uninstall")
+	_, _ = utils.Run(cmd)
+
+	By("removing manager namespace")
+	cmd = exec.Command("kubectl", "delete", "ns", namespace)
+	_, _ = utils.Run(cmd)
+
 	By("removing the git server from the cluster")
 	undeployGitServer()
 

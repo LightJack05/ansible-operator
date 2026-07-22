@@ -173,12 +173,6 @@ func serviceAccountToken() (string, error) {
 	return out, err
 }
 
-func setupSSHHosts(sshNodesNamespace string) {
-	GinkgoHelper()
-	createNamespace(sshNodesNamespace)
-	createSSHHosts(sshNodesNamespace)
-}
-
 func createSSHHosts(namespace string) {
 	var manifests strings.Builder
 	for i := range sshNodeCount {
@@ -431,23 +425,43 @@ data:
 
 func generateSSHKeyPair() (privateKey, publicKey string) {
 	GinkgoHelper()
+	// Use a unique directory per invocation: parallel suite processes would
+	// otherwise race on a fixed key path in /tmp.
+	tmpDir, err := os.MkdirTemp("", "e2e-ssh-key-")
+	Expect(err).NotTo(HaveOccurred(), "Failed to create temporary directory for SSH key pair")
+	defer func() {
+		Expect(os.RemoveAll(tmpDir)).To(Succeed(), "Failed to remove temporary SSH key directory")
+	}()
+	keyPath := filepath.Join(tmpDir, "temp_ssh_key")
+
 	// Generate a new SSH key pair using the ssh-keygen command
-	cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-b", "2048", "-f", "/tmp/temp_ssh_key", "-N", "")
-	_, err := utils.Run(cmd)
+	cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-b", "2048", "-f", keyPath, "-N", "")
+	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "Failed to generate SSH key pair")
 
-	privateKeyBytes, err := os.ReadFile("/tmp/temp_ssh_key")
+	privateKeyBytes, err := os.ReadFile(keyPath)
 	Expect(err).NotTo(HaveOccurred(), "Failed to read generated SSH private key")
-	publicKeyBytes, err := os.ReadFile("/tmp/temp_ssh_key.pub")
+	publicKeyBytes, err := os.ReadFile(keyPath + ".pub")
 	Expect(err).NotTo(HaveOccurred(), "Failed to read generated SSH public key")
 
-	// Clean up the temporary key files
-	err = os.Remove("/tmp/temp_ssh_key")
-	Expect(err).NotTo(HaveOccurred(), "Failed to remove temporary SSH key file")
-	err = os.Remove("/tmp/temp_ssh_key.pub")
-	Expect(err).NotTo(HaveOccurred(), "Failed to remove temporary SSH public key file")
-
 	return string(privateKeyBytes), string(publicKeyBytes)
+}
+
+// dumpControllerLogsOnFailure prints the controller-manager logs when the
+// current spec failed. Specs registered outside the Manager container do not
+// share its failure diagnostics, so they call this from their cleanup.
+func dumpControllerLogsOnFailure() {
+	if !CurrentSpecReport().Failed() {
+		return
+	}
+	cmd := exec.Command("kubectl", "logs", "-l", "control-plane=controller-manager",
+		"-n", namespace, "--tail", "-1")
+	output, err := utils.Run(cmd)
+	if err == nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Controller logs:\n%s", output)
+	} else {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get controller logs: %s", err)
+	}
 }
 
 func createAnsibleGroup(name, namespace, groupVars string, hostNames, groupnames []string) {

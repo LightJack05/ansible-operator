@@ -81,9 +81,29 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
 	esac
 
+# Upper bound for the parallel ginkgo processes: each concurrent spec runs
+# ~3 SSH pods plus cronjob pods on a single Kind node, so raw core counts on
+# large machines would exceed the node's pod capacity rather than speed
+# things up.
+E2E_MAX_PROCS ?= 16
+
+# Number of parallel ginkgo processes for the e2e suite. Specs are isolated in
+# per-test namespaces; shared cluster fixtures are set up once on process 1.
+# Defaults to the CPU count (nproc on Linux, sysctl on macOS), capped at
+# E2E_MAX_PROCS.
+E2E_PROCS ?= $(shell n=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); [ "$$n" -gt "$(E2E_MAX_PROCS)" ] && echo "$(E2E_MAX_PROCS)" || echo "$$n")
+
+# The ginkgo CLI comes from the environment (nix dev shell, or installed from
+# go.mod in CI), like kind and kubectl.
+GINKGO ?= ginkgo
+
 .PHONY: test-e2e
-test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout 30m -ginkgo.timeout 30m
+test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests in parallel. Expected an isolated environment using Kind.
+	@command -v $(GINKGO) >/dev/null 2>&1 || { \
+		echo "ginkgo is not installed. Enter the nix dev shell or install it manually."; \
+		exit 1; \
+	}
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) "$(GINKGO)" -v --tags=e2e --procs=$(E2E_PROCS) --timeout=30m ./test/e2e/
 	$(MAKE) cleanup-test-e2e
 
 .PHONY: cleanup-test-e2e
