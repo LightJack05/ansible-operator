@@ -24,6 +24,8 @@
 
           # --- Add project-specific packages here ---
           extraPackages = [
+            # ginkgo CLI for running the e2e suite in parallel (make test-e2e)
+            pkgs.ginkgo
           ];
 
           # --- Add project-specific shell hook here (env vars, startup messages, etc.) ---
