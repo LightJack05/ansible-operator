@@ -72,13 +72,13 @@ jobs:
             ghcr.io/lightjack05/ansible-operator:${{ needs.semver.outputs.tag }}
             ghcr.io/lightjack05/ansible-operator:latest
 
-#      - name: Package Helm chart
-#        run: |
-#          helm package helm-chart \
-#            --version ${{ needs.semver.outputs.version }} \
-#            --app-version ${{ needs.semver.outputs.tag }}
-#
-#      - name: Push Helm chart to GHCR OCI registry
-#        run: |
-#          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-#          helm push ansible-operator-${{ needs.semver.outputs.version }}.tgz oci://ghcr.io/lightjack05/charts
+      - name: Package Helm chart
+        run: |
+          helm package helm-chart \
+            --version ${{ needs.semver.outputs.version }} \
+            --app-version ${{ needs.semver.outputs.tag }}
+
+      - name: Push Helm chart to GHCR OCI registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+          helm push ansible-operator-${{ needs.semver.outputs.version }}.tgz oci://ghcr.io/lightjack05/charts
