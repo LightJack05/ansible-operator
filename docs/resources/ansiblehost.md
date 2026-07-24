@@ -92,15 +92,12 @@ kubectl create secret generic foobar-creds \
   --from-file=ssh_key=$HOME/.ssh/id_ed25519
 ```
 
-Create an (initially empty) host-key store secret; the operator fills it in on first reconcile:
-
-```sh
-kubectl create secret generic foobar-host-key
-```
+You do **not** need to create the host-key store secret yourself. The operator creates the secret named
+in `sshHostKeySecretRef` on first reconcile and populates it with the trusted host key.
 
 !!! tip "Pinning the host key yourself"
-    You can pre-populate `sshHostKeySecretRef` with a known host key. When a key is already present, the
-    operator leaves it untouched rather than overwriting it.
+    You can optionally pre-create `sshHostKeySecretRef` with a known host key. When a key is already
+    present, the operator leaves it untouched rather than overwriting it.
 
 ## Related
 

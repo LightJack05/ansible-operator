@@ -58,7 +58,7 @@ After fixing the cause, the next reconcile un-suspends the CronJob.
 Look at the pod logs for the most recent job:
 
 ```sh
-kubectl get jobs -l  # find the job created by the cronjob
+kubectl get jobs   # find the job created by the cronjob
 kubectl logs job/<job-name> --all-containers
 ```
 

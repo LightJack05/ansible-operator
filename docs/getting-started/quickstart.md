@@ -7,16 +7,19 @@ All resources in this guide live in the `default` namespace. The operator works 
 `AnsibleReconcileJob` builds its inventory from the `AnsibleHost` and `AnsibleGroup` objects **in the
 same namespace**.
 
-## 1. Create the SSH credential secrets
+## 1. Create the SSH credential secret
 
-Every host references a Kubernetes `Secret` holding its SSH **private key** under the key `ssh_key`,
-plus a second secret the operator uses to store the host's trusted host key.
+Every host references a Kubernetes `Secret` holding its SSH **private key** under the key `ssh_key`:
 
 ```sh
 # Private key the operator uses to authenticate to the host
 kubectl create secret generic web1-creds \
   --from-file=ssh_key=$HOME/.ssh/id_ed25519
 ```
+
+The host also references a second secret for the trusted host key
+(`sshHostKeySecretRef` below) — you don't need to create that one; the operator creates and populates
+it on first reconcile.
 
 !!! warning "Key must be usable non-interactively"
     The private key must not be passphrase-protected, since Ansible runs unattended inside a pod.
