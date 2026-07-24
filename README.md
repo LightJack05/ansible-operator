@@ -1,135 +1,126 @@
 # ansible-operator
-// TODO(user): Add simple overview of use/purpose
+
+A Kubernetes operator that runs [Ansible](https://www.ansible.com/) playbooks against SSH-reachable
+hosts, on a schedule, using nothing but Kubernetes resources.
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
 
-## Getting Started
+ansible-operator lets you manage Ansible-based configuration and automation declaratively from
+Kubernetes. Instead of maintaining an inventory file, a control node, and a cron entry somewhere, you
+describe your hosts, groups, and playbooks as Custom Resources. The operator generates the Ansible
+inventory, manages SSH host-key trust, and dispatches playbook runs as Kubernetes `CronJob`s — so every
+run gets native scheduling, retries, logs, and RBAC.
 
-### Prerequisites
-- go version v1.24.6+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+It defines four namespaced Custom Resources in the API group `ansible-operator.lightjack.de/v1alpha1`:
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+| Kind | Purpose |
+| --- | --- |
+| `AnsibleHost` | A single SSH-reachable host, its connection details, and credentials. |
+| `AnsibleGroup` | A named group of hosts and/or subgroups, mirroring Ansible inventory groups. |
+| `AnsiblePlaybook` | A playbook stored inline or sourced from a Git repository. |
+| `AnsibleReconcileJob` | A cron schedule that runs a playbook against the generated inventory. |
 
-```sh
-make docker-build docker-push IMG=<some-registry>/ansible-operator:tag
-```
+Ansible runs inside cluster pods, so your target hosts don't need Ansible installed — they only need to
+be reachable over SSH and to satisfy Ansible's usual Python-interpreter requirement.
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+## Documentation
 
-**Install the CRDs into the cluster:**
+Full documentation — installation, a quick-start walkthrough, architecture, and the complete API
+reference — is published at:
 
-```sh
-make install
-```
+**📖 <https://lightjack05.github.io/ansible-operator/>**
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+The docs are built with [MkDocs](https://www.mkdocs.org/) and
+[Material for MkDocs](https://squidfunk.github.io/mkdocs-material/) from the [`docs/`](docs/) directory.
 
-```sh
-make deploy IMG=<some-registry>/ansible-operator:tag
-```
+## Quick start
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
+> Assumes a running Kubernetes cluster and `kubectl`/`helm` configured against it.
 
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+Install the operator with Helm:
 
 ```sh
-kubectl apply -k config/samples/
+helm install ansible-operator \
+  oci://ghcr.io/lightjack05/charts/ansible-operator \
+  --namespace ansible-operator-system --create-namespace
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+Then define a host, a playbook, and a schedule (see the
+[Quick Start guide](https://lightjack05.github.io/ansible-operator/getting-started/quickstart/) for the
+full walkthrough, including the required SSH secrets):
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+```yaml
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsiblePlaybook
+metadata:
+  name: ping-all
+  namespace: default
+spec:
+  inline:
+    playbook: |
+      - name: Ping all hosts
+        hosts: all
+        tasks:
+          - name: Ping
+            ansible.builtin.ping:
+---
+apiVersion: ansible-operator.lightjack.de/v1alpha1
+kind: AnsibleReconcileJob
+metadata:
+  name: nightly-ping
+  namespace: default
+spec:
+  schedule: "0 0 * * *"
+  playbookRef:
+    name: ping-all
+```
+
+## Installation options
+
+- **Helm** (recommended): chart published at `oci://ghcr.io/lightjack05/charts/ansible-operator`.
+- **Bundled manifests**:
+  ```sh
+  kubectl apply -f https://raw.githubusercontent.com/LightJack05/ansible-operator/main/dist/install.yaml
+  ```
+- **From source** (contributors):
+  ```sh
+  make install                                        # install CRDs
+  make deploy IMG=<registry>/ansible-operator:tag     # deploy the manager
+  ```
+
+See the [installation docs](https://lightjack05.github.io/ansible-operator/getting-started/installation/)
+for details and configuration.
+
+## Container images
+
+- Manager: `ghcr.io/lightjack05/ansible-operator`
+- Runner (pulled automatically by scheduled jobs): `ghcr.io/lightjack05/ansible-operator-runner-init`
+  and `ghcr.io/lightjack05/ansible-operator-runner-runner`
+
+## Development
+
+This project is scaffolded with [Kubebuilder](https://book.kubebuilder.io/). A [Nix](https://nixos.org/)
+flake provides a reproducible dev shell with all tooling (Go, kubebuilder, kind, mkdocs, ...):
 
 ```sh
-kubectl delete -k config/samples/
+nix develop
 ```
 
-**Delete the APIs(CRDs) from the cluster:**
+Common tasks (run `make help` for the full list):
 
 ```sh
-make uninstall
+make manifests    # regenerate CRDs/RBAC after editing api/*_types.go
+make generate     # regenerate DeepCopy methods
+make test-e2e     # run e2e tests against a Kind cluster
+make lint-fix     # auto-fix code style
 ```
 
-**UnDeploy the controller from the cluster:**
+To work on the documentation locally:
 
 ```sh
-make undeploy
+mkdocs serve      # live-reloading preview at http://127.0.0.1:8000
+mkdocs build      # build the static site into ./site
 ```
 
-## Project Distribution
-
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/ansible-operator:tag
-```
-
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/ansible-operator/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-kubebuilder edit --plugins=helm/v2-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
-
-## License
-
-Copyright 2026.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+Docs are automatically published to GitHub Pages on every push to `main` via
+[`.github/workflows/docs.yml`](.github/workflows/docs.yml).
