@@ -318,14 +318,6 @@ func (r *AnsibleReconcileJobReconciler) setCondition(ctx context.Context, reconc
 	return nil
 }
 
-func boolPtr(value bool) *bool {
-	return &value
-}
-
-func int32Ptr(value int32) *int32 {
-	return &value
-}
-
 func (r *AnsibleReconcileJobReconciler) ensureCronjobWithMounts(ctx context.Context, reconcileJob ansibleoperatorv1alpha1.AnsibleReconcileJob) error {
 	hosts := &ansibleoperatorv1alpha1.AnsibleHostList{}
 	groups := &ansibleoperatorv1alpha1.AnsibleGroupList{}
@@ -408,7 +400,7 @@ func constructCronjobWithMounts(name, namespace, schedule, reconcileJobName stri
 		},
 		Spec: batchv1.CronJobSpec{
 			Schedule:          schedule,
-			Suspend:           boolPtr(false),
+			Suspend:           new(false),
 			ConcurrencyPolicy: batchv1.ForbidConcurrent,
 			JobTemplate: batchv1.JobTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -417,7 +409,7 @@ func constructCronjobWithMounts(name, namespace, schedule, reconcileJobName stri
 					},
 				},
 				Spec: batchv1.JobSpec{
-					BackoffLimit: int32Ptr(1),
+					BackoffLimit: new(int32(1)),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							RestartPolicy: corev1.RestartPolicyNever,
@@ -491,7 +483,7 @@ func constructCronjobWithMounts(name, namespace, schedule, reconcileJobName stri
 						Name: configmap,
 					},
 					Key:      key,
-					Optional: boolPtr(true),
+					Optional: new(true),
 				},
 			},
 		}
@@ -510,7 +502,7 @@ func constructCronjobWithMounts(name, namespace, schedule, reconcileJobName stri
 		Name: runtimeConfigVolumeName,
 		VolumeSource: corev1.VolumeSource{
 			ConfigMap: &corev1.ConfigMapVolumeSource{
-				Optional: boolPtr(true),
+				Optional: new(true),
 				LocalObjectReference: corev1.LocalObjectReference{
 					Name: runtimeConfigMapName,
 				},
@@ -597,7 +589,7 @@ func buildVolumeForSecret(name, secret, key, path string) *corev1.Volume {
 					{
 						Key:  key,
 						Path: path,
-						Mode: int32Ptr(0o600),
+						Mode: new(int32(0o600)),
 					},
 				},
 			},
@@ -632,7 +624,7 @@ func (r *AnsibleReconcileJobReconciler) handleReconcileError(ctx context.Context
 	if err := r.Get(ctx, client.ObjectKey{Namespace: reconcileJob.Namespace, Name: reconcileJob.Name}, cronjob); err != nil {
 		lg.Error(err, "unable to fetch cronjob matching reconcileJob")
 	} else {
-		cronjob.Spec.Suspend = boolPtr(true)
+		cronjob.Spec.Suspend = new(true)
 		if err := r.Update(ctx, cronjob); err != nil {
 			lg.Error(err, "unable to update cronjob to disable subsequent executions")
 		}
