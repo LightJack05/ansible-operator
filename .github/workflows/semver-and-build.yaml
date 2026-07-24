@@ -72,6 +72,10 @@ jobs:
             ghcr.io/lightjack05/ansible-operator:${{ needs.semver.outputs.tag }}
             ghcr.io/lightjack05/ansible-operator:latest
 
+      - name: Pin image tag to release version
+        run: |
+          yq -i '.manager.image.tag = "${{ needs.semver.outputs.tag }}"' ./dist/chart/values.yaml
+
       - name: Package Helm chart
         run: |
           helm package ./dist/chart \
