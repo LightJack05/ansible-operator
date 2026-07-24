@@ -1,0 +1,79 @@
+site_name: ansible-operator
+site_description: A Kubernetes operator that runs Ansible playbooks against SSH hosts on a schedule.
+site_author: LightJack05
+site_url: https://lightjack05.github.io/ansible-operator/
+
+repo_name: LightJack05/ansible-operator
+repo_url: https://github.com/LightJack05/ansible-operator
+edit_uri: edit/main/docs/
+
+copyright: Copyright &copy; 2026 &mdash; Licensed under the Apache License 2.0
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+  - Concepts:
+      - Architecture: concepts/architecture.md
+  - Custom Resources:
+      - Overview: resources/index.md
+      - AnsibleHost: resources/ansiblehost.md
+      - AnsibleGroup: resources/ansiblegroup.md
+      - AnsiblePlaybook: resources/ansibleplaybook.md
+      - AnsibleReconcileJob: resources/ansiblereconcilejob.md
+  - Reference:
+      - Helm Values: reference/helm-values.md
+      - Troubleshooting: reference/troubleshooting.md

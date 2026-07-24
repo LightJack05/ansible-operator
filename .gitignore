@@ -30,3 +30,6 @@ go.work
 *.kubeconfig
 
 devenv/ssh-keys/
+
+# mkdocs build output
+site/
