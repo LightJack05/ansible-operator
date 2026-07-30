@@ -3,7 +3,7 @@ kind: AnsibleReconcileJob
 metadata:
   name: inline-reconcile-job
 spec:
-  schedule: "0 0 * * *"
+  schedule: "* * * * *"
   playbookRef:
     # ref to a playbook in the same namespace
     # host selection is handled via the inventory, and the group referenced in the playbook
@@ -14,7 +14,7 @@ kind: AnsibleReconcileJob
 metadata:
   name: git-reconcile-job
 spec:
-  schedule: "0 0 * * *"
+  schedule: "* * * * *"
   playbookRef:
     # ref to a playbook in the same namespace
     # host selection is handled via the inventory, and the group referenced in the playbook

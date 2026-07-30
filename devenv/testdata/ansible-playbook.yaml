@@ -5,32 +5,37 @@ metadata:
 spec:
   inline:
     requirements: |
-      roles:
-        - name: geerlingguy.ntp
       collections:
         - name: ansible.posix
+      roles:
+      - name: ansible_test_role
+        src: git+http://git-server.default.svc.cluster.local/git/ansible-test-role.git
+        version: main
     playbook: |
-      - name: Test install flow
-        hosts: web_tier
+      - name: create file with group vars
+        hosts: databases
         become: true
-
+      
         roles:
-          - geerlingguy.ntp
-
+          - role: ansible_test_role
+      
+      - name: create file with inline vars
+        hosts: ssh-node-1
+        become: true
+        roles:
+          - role: ansible_test_role
+            vars:
+              content: "Hello world!"
+              location: /test_file_inline.txt
+      
+      - name: create file with host vars and inline task
+        hosts: ssh-node-2
+        become: true
         tasks:
-          - name: Set a sysctl value (ansible.posix)
-            ansible.posix.sysctl:
-              name: vm.swappiness
-              value: '10'
-              state: present
-
-          - name: Tweak login banner perms (ansible.posix)
-            ansible.posix.mount:
-              path: /mnt/testtmp
-              src: tmpfs
-              fstype: tmpfs
-              opts: size=16m
-              state: mounted
+          - name: Create file
+            ansible.builtin.copy:
+              content: "{{ content }}"
+              dest: "{{ location }}"
 ---
 apiVersion: ansible-operator.lightjack.de/v1alpha1
 kind: AnsiblePlaybook
