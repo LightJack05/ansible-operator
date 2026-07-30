@@ -412,11 +412,24 @@ func constructCronjobWithMounts(name, namespace, schedule, reconcileJobName stri
 					BackoffLimit: new(int32(1)),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
+							SecurityContext: &corev1.PodSecurityContext{
+								RunAsNonRoot: new(true),
+								FSGroup:      new(int64(1000)),
+							},
+
 							RestartPolicy: corev1.RestartPolicyNever,
 							InitContainers: []corev1.Container{
 								{
 									Name:  "init",
 									Image: ociImageJobInitContainer,
+									SecurityContext: &corev1.SecurityContext{
+										Capabilities: &corev1.Capabilities{
+											Drop: []corev1.Capability{"ALL"},
+										},
+										RunAsNonRoot:             new(true),
+										AllowPrivilegeEscalation: new(false),
+										SeccompProfile:           &corev1.SeccompProfile{Type: "RuntimeDefault"},
+									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
 											Name:      playbooksVolumeName,
@@ -435,6 +448,14 @@ func constructCronjobWithMounts(name, namespace, schedule, reconcileJobName stri
 								{
 									Name:  "runner",
 									Image: ociImageJobRuntimeContainer,
+									SecurityContext: &corev1.SecurityContext{
+										Capabilities: &corev1.Capabilities{
+											Drop: []corev1.Capability{"ALL"},
+										},
+										RunAsNonRoot:             new(true),
+										AllowPrivilegeEscalation: new(false),
+										SeccompProfile:           &corev1.SeccompProfile{Type: "RuntimeDefault"},
+									},
 									VolumeMounts: []corev1.VolumeMount{
 										{
 											Name:      playbooksVolumeName,
