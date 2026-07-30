@@ -7,6 +7,10 @@ spec:
     requirements: |
       collections:
         - name: ansible.posix
+      roles:
+      - name: ansible_test_role
+        src: git+http://git-server.default.svc.cluster.local/git/ansible-test-role.git
+        version: main
     playbook: |
       - name: create file with group vars
         hosts: databases
